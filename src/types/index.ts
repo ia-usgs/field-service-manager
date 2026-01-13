@@ -19,6 +19,7 @@ export interface Part {
   quantity: number;
   unitCostCents: number; // What we paid
   unitPriceCents: number; // What we charge
+  source: 'inventory' | 'customer-provided'; // inventory = we mark up & sell; customer-provided = pass-through (not income)
 }
 
 export interface Reminder {
