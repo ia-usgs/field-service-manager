@@ -47,16 +47,9 @@ export function AttachmentManager({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-    // Validate file size (max 5MB for local storage)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("File size must be less than 5MB");
-      return;
-    }
-
-    // Validate file type
     const allowedTypes = [
       "image/jpeg",
       "image/png",
@@ -67,18 +60,39 @@ export function AttachmentManager({
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
 
-    if (!allowedTypes.includes(file.type)) {
-      alert("Unsupported file type. Please use images or PDF/Word documents.");
-      return;
+    // Validate all files first
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    Array.from(files).forEach((file) => {
+      if (file.size > 5 * 1024 * 1024) {
+        errors.push(`${file.name}: File size must be less than 5MB`);
+      } else if (!allowedTypes.includes(file.type)) {
+        errors.push(`${file.name}: Unsupported file type`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (errors.length > 0) {
+      alert(`Some files couldn't be added:\n${errors.join("\n")}`);
     }
+
+    if (validFiles.length === 0) return;
 
     setIsUploading(true);
 
     try {
-      // Convert file to base64
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Data = reader.result as string;
+      const newAttachments: Attachment[] = [];
+
+      // Process all files
+      for (const file of validFiles) {
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
 
         const newAttachment = await addAttachment({
           jobId,
@@ -88,18 +102,18 @@ export function AttachmentManager({
           data: base64Data,
         });
 
-        setAttachments([...attachments, newAttachment]);
-        setIsUploading(false);
+        newAttachments.push(newAttachment);
+      }
 
-        // Reset file input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-      };
-      reader.readAsDataURL(file);
+      setAttachments([...attachments, ...newAttachments]);
     } catch (error) {
-      console.error("Error uploading file:", error);
+      console.error("Error uploading files:", error);
+    } finally {
       setIsUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -164,6 +178,7 @@ export function AttachmentManager({
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   onChange={handleFileSelect}
                   accept="image/*,.pdf,.doc,.docx"
                   className="hidden"
@@ -174,13 +189,13 @@ export function AttachmentManager({
                   className="btn-primary flex items-center gap-2"
                 >
                   <Upload className="w-4 h-4" />
-                  {isUploading ? "Uploading..." : "Upload File"}
+                  {isUploading ? "Uploading..." : "Upload Files"}
                 </button>
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Supported: Images (JPEG, PNG, GIF, WebP), PDF, Word documents. Max 5MB per file.
+              Supported: Images (JPEG, PNG, GIF, WebP), PDF, Word documents. Max 5MB per file. You can select multiple files at once.
             </p>
           </div>
 
