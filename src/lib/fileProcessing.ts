@@ -52,20 +52,34 @@ export async function saveAttachmentFile(
   if (isTauri()) {
     try {
       // Dynamic import of Tauri APIs
-      const { writeBinaryFile, createDir, BaseDirectory } = await import("@tauri-apps/api/fs");
+      const { writeBinaryFile, createDir } = await import("@tauri-apps/api/fs");
       const { appDataDir, join } = await import("@tauri-apps/api/path");
 
       const baseDir = await appDataDir();
       const jobDir = await join(baseDir, "attachments", jobId);
-      
+
       // Create directory if it doesn't exist
       await createDir(jobDir, { recursive: true });
 
-      // Read file as array buffer and write to filesystem
-      const arrayBuffer = await file.arrayBuffer();
       const filePath = await join(jobDir, file.name);
-      
-      await writeBinaryFile(filePath, new Uint8Array(arrayBuffer));
+
+      // IMPORTANT (Tauri): avoid IPC payload limits by writing in chunks.
+      // Tauri IPC can error around ~5MB when passing large payloads.
+      const chunkSize = 1024 * 1024 * 2; // 2MB chunks (safe under typical IPC limits)
+      let offset = 0;
+      let first = true;
+
+      while (offset < file.size) {
+        const end = Math.min(offset + chunkSize, file.size);
+        const chunk = await file.slice(offset, end).arrayBuffer();
+
+        await writeBinaryFile(filePath, new Uint8Array(chunk), {
+          append: !first,
+        });
+
+        first = false;
+        offset = end;
+      }
 
       return { filePath };
     } catch (error) {
