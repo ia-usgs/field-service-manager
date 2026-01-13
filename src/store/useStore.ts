@@ -20,10 +20,12 @@ interface AppState {
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'archived'>) => Promise<Customer>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   archiveCustomer: (id: string) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
 
   // Job actions
   addJob: (job: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Job>;
   updateJob: (id: string, updates: Partial<Job>) => Promise<void>;
+  deleteJob: (id: string) => Promise<void>;
   completeJob: (id: string) => Promise<Invoice>;
 
   // Invoice actions
@@ -146,6 +148,35 @@ export const useStore = create<AppState>((set, get) => ({
     await get().updateCustomer(id, { archived: true });
   },
 
+  deleteCustomer: async (id) => {
+    const db = await getDB();
+    const customer = get().customers.find((c) => c.id === id);
+    if (!customer) return;
+
+    // Check if customer has any jobs - if so, don't allow deletion
+    const hasJobs = get().jobs.some((j) => j.customerId === id);
+    if (hasJobs) {
+      throw new Error('Cannot delete customer with existing jobs');
+    }
+
+    await db.delete('customers', id);
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'customer',
+      entityId: id,
+      action: 'deleted',
+      details: `Customer "${customer.name}" deleted`,
+      timestamp: new Date().toISOString(),
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      customers: state.customers.filter((c) => c.id !== id),
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+  },
+
   addJob: async (jobData) => {
     const db = await getDB();
     const now = new Date().toISOString();
@@ -191,6 +222,34 @@ export const useStore = create<AppState>((set, get) => ({
 
     set((state) => ({
       jobs: state.jobs.map((j) => (j.id === id ? updatedJob : j)),
+    }));
+  },
+
+  deleteJob: async (id) => {
+    const db = await getDB();
+    const job = get().jobs.find((j) => j.id === id);
+    if (!job) return;
+
+    // Don't allow deletion of invoiced or paid jobs
+    if (job.status === 'invoiced' || job.status === 'paid') {
+      throw new Error('Cannot delete invoiced or paid jobs');
+    }
+
+    await db.delete('jobs', id);
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'job',
+      entityId: id,
+      action: 'deleted',
+      details: `Job deleted`,
+      timestamp: new Date().toISOString(),
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      jobs: state.jobs.filter((j) => j.id !== id),
+      auditLogs: [...state.auditLogs, auditLog],
     }));
   },
 

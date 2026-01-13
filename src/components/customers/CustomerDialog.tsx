@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Customer } from "@/types";
 import {
@@ -11,6 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -34,8 +44,9 @@ export function CustomerDialog({
   onOpenChange,
   customer,
 }: CustomerDialogProps) {
-  const { addCustomer, updateCustomer } = useStore();
+  const { addCustomer, updateCustomer, deleteCustomer, jobs } = useStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const {
     register,
@@ -109,97 +120,147 @@ export function CustomerDialog({
     }
   };
 
+  const handleDelete = async () => {
+    if (customer) {
+      await deleteCustomer(customer.id);
+      setIsDeleteDialogOpen(false);
+      onOpenChange(false);
+    }
+  };
+
+  // Check if customer has any jobs (can't delete if they do)
+  const customerHasJobs = customer ? jobs.some((j) => j.customerId === customer.id) : false;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {customer ? "Edit Customer" : "Add New Customer"}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {customer ? "Edit Customer" : "Add New Customer"}
+            </DialogTitle>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Name *</label>
-            <input
-              {...register("name")}
-              className="input-field w-full"
-              placeholder="Customer name"
-            />
-            {errors.name && (
-              <p className="text-destructive text-xs mt-1">{errors.name.message}</p>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Name *</label>
+              <input
+                {...register("name")}
+                className="input-field w-full"
+                placeholder="Customer name"
+              />
+              {errors.name && (
+                <p className="text-destructive text-xs mt-1">{errors.name.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Email</label>
+              <input
+                {...register("email")}
+                type="email"
+                className="input-field w-full"
+                placeholder="email@example.com"
+              />
+              {errors.email && (
+                <p className="text-destructive text-xs mt-1">{errors.email.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Phone</label>
+              <input
+                {...register("phone")}
+                className="input-field w-full"
+                placeholder="(555) 555-5555"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Address</label>
+              <input
+                {...register("address")}
+                className="input-field w-full"
+                placeholder="Service address"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea
+                {...register("notes")}
+                className="input-field w-full min-h-[80px] resize-none"
+                placeholder="Internal notes about this customer..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Tags (comma separated)
+              </label>
+              <input
+                {...register("tags")}
+                className="input-field w-full"
+                placeholder="residential, repeat, commercial"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              {customer && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  disabled={customerHasJobs}
+                  className="btn-secondary flex items-center gap-2 text-destructive hover:bg-destructive/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={customerHasJobs ? "Cannot delete customer with jobs" : "Delete customer"}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="btn-primary flex-1"
+              >
+                {isSubmitting ? "Saving..." : customer ? "Update" : "Add Customer"}
+              </button>
+            </div>
+
+            {customer && customerHasJobs && (
+              <p className="text-xs text-muted-foreground text-center">
+                Note: Customers with jobs cannot be deleted. Use archive instead from the customer profile.
+              </p>
             )}
-          </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <input
-              {...register("email")}
-              type="email"
-              className="input-field w-full"
-              placeholder="email@example.com"
-            />
-            {errors.email && (
-              <p className="text-destructive text-xs mt-1">{errors.email.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Phone</label>
-            <input
-              {...register("phone")}
-              className="input-field w-full"
-              placeholder="(555) 555-5555"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Address</label>
-            <input
-              {...register("address")}
-              className="input-field w-full"
-              placeholder="Service address"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Notes</label>
-            <textarea
-              {...register("notes")}
-              className="input-field w-full min-h-[80px] resize-none"
-              placeholder="Internal notes about this customer..."
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Tags (comma separated)
-            </label>
-            <input
-              {...register("tags")}
-              className="input-field w-full"
-              placeholder="residential, repeat, commercial"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="btn-secondary flex-1"
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Customer</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{customer?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn-primary flex-1"
-            >
-              {isSubmitting ? "Saving..." : customer ? "Update" : "Add Customer"}
-            </button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
