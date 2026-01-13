@@ -46,20 +46,27 @@ export default function Dashboard() {
     const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const thisYear = String(now.getFullYear());
 
-    // Revenue calculations
-    const totalRevenue = invoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+    // Revenue calculations - use incomeAmountCents to exclude pass-through parts
+    // For legacy invoices without incomeAmountCents, fall back to paidAmountCents
+    const getIncomeFromInvoice = (inv: typeof invoices[0]) => {
+      // Calculate income-based paid amount (proportional to what was paid)
+      const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
+      return Math.round(inv.paidAmountCents * incomeRatio);
+    };
+
+    const totalRevenue = invoices.reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
     
     const revenueToday = invoices
       .filter((inv) => inv.paymentDate?.startsWith(today))
-      .reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+      .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
 
     const revenueThisMonth = invoices
       .filter((inv) => inv.paymentDate?.startsWith(thisMonth))
-      .reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+      .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
 
     const revenueThisYear = invoices
       .filter((inv) => inv.paymentDate?.startsWith(thisYear))
-      .reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+      .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
 
     // Expenses
     const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amountCents, 0);
@@ -82,10 +89,10 @@ export default function Dashboard() {
         ? invoices.reduce((sum, inv) => sum + inv.totalCents, 0) / completedJobs.length
         : 0;
 
-    // Top customers
+    // Top customers - based on actual income, not pass-through
     const customerSpend: Record<string, number> = {};
     invoices.forEach((inv) => {
-      customerSpend[inv.customerId] = (customerSpend[inv.customerId] || 0) + inv.paidAmountCents;
+      customerSpend[inv.customerId] = (customerSpend[inv.customerId] || 0) + getIncomeFromInvoice(inv);
     });
     const topCustomers = Object.entries(customerSpend)
       .sort((a, b) => b[1] - a[1])
@@ -127,7 +134,9 @@ export default function Dashboard() {
       if (inv.paymentDate) {
         const key = inv.paymentDate.substring(0, 7);
         if (months[key]) {
-          months[key].revenue += inv.paidAmountCents;
+          // Use income ratio for revenue calculation
+          const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
+          months[key].revenue += Math.round(inv.paidAmountCents * incomeRatio);
         }
       }
     });

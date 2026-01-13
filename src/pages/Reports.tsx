@@ -24,7 +24,10 @@ export default function Reports() {
   const revenueByCustomer = useMemo(() => {
     const customerRevenue: Record<string, number> = {};
     invoices.forEach((inv) => {
-      customerRevenue[inv.customerId] = (customerRevenue[inv.customerId] || 0) + inv.paidAmountCents;
+      // Use income ratio to exclude pass-through parts from revenue
+      const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
+      const incomeAmount = Math.round(inv.paidAmountCents * incomeRatio);
+      customerRevenue[inv.customerId] = (customerRevenue[inv.customerId] || 0) + incomeAmount;
     });
     return Object.entries(customerRevenue)
       .map(([customerId, revenue]) => ({
@@ -60,7 +63,11 @@ export default function Reports() {
     a.click();
   };
 
-  const totalRevenue = invoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+  // Calculate revenue using income ratio to exclude pass-through parts
+  const totalRevenue = invoices.reduce((sum, inv) => {
+    const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
+    return sum + Math.round(inv.paidAmountCents * incomeRatio);
+  }, 0);
   const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amountCents, 0);
 
   return (

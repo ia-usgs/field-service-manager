@@ -86,11 +86,13 @@ export interface Invoice {
   invoiceDate: string;
   dueDate: string;
   laborTotalCents: number;
-  partsTotalCents: number;
+  partsTotalCents: number; // Only inventory parts (actual income)
+  passThroughPartsCents: number; // Customer-paid parts (not income)
   miscFeesCents: number;
   subtotalCents: number;
   taxCents: number;
-  totalCents: number;
+  totalCents: number; // Full invoice amount including pass-through
+  incomeAmountCents: number; // Actual income (excludes pass-through parts)
   paidAmountCents: number;
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'overpaid';
   payments?: Payment[];
