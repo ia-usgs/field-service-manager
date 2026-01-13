@@ -9,10 +9,10 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Zap,
   BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import logo from "@/assets/logo.png";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -38,16 +38,14 @@ export function AppSidebar() {
       {/* Logo */}
       <div className="flex items-center h-16 px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary">
-            <Zap className="w-5 h-5 text-primary-foreground" />
-          </div>
+          <img src={logo} alt="Logo" className="w-8 h-8 object-contain rounded" />
           {!collapsed && (
             <div className="flex flex-col">
               <span className="font-semibold text-sidebar-foreground text-sm">
-                ServicePro
+                Tech & Electrical
               </span>
               <span className="text-[10px] text-muted-foreground">
-                Tech & Electrical
+                Services
               </span>
             </div>
           )}
