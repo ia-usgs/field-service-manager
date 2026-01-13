@@ -10,22 +10,29 @@ import {
   FileText,
   Briefcase,
   DollarSign,
+  Bell,
+  Check,
+  Trash2,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui/stat-card";
 import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { JobDialog } from "@/components/jobs/JobDialog";
+import { ReminderDialog } from "@/components/reminders/ReminderDialog";
 import { centsToDollars } from "@/lib/db";
 
 export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { customers, jobs, invoices } = useStore();
+  const { customers, jobs, invoices, getRemindersByCustomer, completeReminder, deleteReminder } = useStore();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isJobDialogOpen, setIsJobDialogOpen] = useState(false);
+  const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false);
+  const [selectedJobForReminder, setSelectedJobForReminder] = useState<string | null>(null);
 
   const customer = customers.find((c) => c.id === id);
+  const customerReminders = id ? getRemindersByCustomer(id) : [];
 
   if (!customer) {
     return (
@@ -48,6 +55,19 @@ export default function CustomerProfile() {
     customerInvoices.length > 0
       ? customerInvoices.reduce((sum, inv) => sum + inv.totalCents, 0) / customerInvoices.length
       : 0;
+
+  const handleCompleteReminder = async (reminderId: string) => {
+    await completeReminder(reminderId);
+  };
+
+  const handleDeleteReminder = async (reminderId: string) => {
+    await deleteReminder(reminderId);
+  };
+
+  const openReminderDialog = (jobId: string) => {
+    setSelectedJobForReminder(jobId);
+    setIsReminderDialogOpen(true);
+  };
 
   const statusColors: Record<string, string> = {
     quoted: "status-quoted",
@@ -186,6 +206,117 @@ export default function CustomerProfile() {
         )}
       </div>
 
+      {/* Service Reminders */}
+      <div className="bg-card border border-border rounded-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Bell className="w-5 h-5" />
+            Service Reminders
+          </h3>
+          {customerJobs.length > 0 && (
+            <div className="flex items-center gap-2">
+              <select
+                className="input-field text-sm py-1"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    openReminderDialog(e.target.value);
+                    e.target.value = "";
+                  }
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>Add reminder to job...</option>
+                {customerJobs.map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.problemDescription.substring(0, 30)}... ({new Date(job.dateOfService).toLocaleDateString()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+        {customerReminders.length > 0 ? (
+          <div className="space-y-3">
+            {customerReminders
+              .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+              .map((reminder) => {
+                const isOverdue = !reminder.completed && new Date(reminder.dueDate) < new Date();
+                const relatedJob = jobs.find((j) => j.id === reminder.jobId);
+                return (
+                  <div
+                    key={reminder.id}
+                    className={`p-4 rounded-lg border ${
+                      reminder.completed
+                        ? "bg-success/10 border-success/20"
+                        : isOverdue
+                        ? "bg-destructive/10 border-destructive/20"
+                        : "bg-secondary/50 border-border"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            reminder.type === "follow-up"
+                              ? "bg-primary/20 text-primary"
+                              : reminder.type === "maintenance"
+                              ? "bg-warning/20 text-warning"
+                              : "bg-success/20 text-success"
+                          }`}>
+                            {reminder.type.replace("-", " ")}
+                          </span>
+                          {reminder.completed && (
+                            <span className="text-xs text-success flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Completed
+                            </span>
+                          )}
+                          {isOverdue && (
+                            <span className="text-xs text-destructive">Overdue!</span>
+                          )}
+                        </div>
+                        <p className="font-medium">{reminder.title}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Due: {new Date(reminder.dueDate).toLocaleDateString()}
+                        </p>
+                        {relatedJob && (
+                          <p
+                            className="text-xs text-primary cursor-pointer hover:underline mt-1"
+                            onClick={() => navigate(`/jobs/${relatedJob.id}`)}
+                          >
+                            Related job: {relatedJob.problemDescription.substring(0, 40)}...
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!reminder.completed && (
+                          <button
+                            onClick={() => handleCompleteReminder(reminder.id)}
+                            className="p-1.5 hover:bg-success/10 rounded text-success"
+                            title="Mark complete"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteReminder(reminder.id)}
+                          className="p-1.5 hover:bg-destructive/10 rounded text-destructive"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-center py-8">
+            No reminders set. Add reminders to schedule follow-ups for this customer.
+          </p>
+        )}
+      </div>
+
       {/* Invoice History */}
       <div className="bg-card border border-border rounded-lg p-6">
         <h3 className="font-semibold mb-4">Invoice History</h3>
@@ -238,6 +369,19 @@ export default function CustomerProfile() {
         onOpenChange={setIsJobDialogOpen}
         customerId={customer.id}
       />
+
+      {selectedJobForReminder && (
+        <ReminderDialog
+          open={isReminderDialogOpen}
+          onOpenChange={(open) => {
+            setIsReminderDialogOpen(open);
+            if (!open) setSelectedJobForReminder(null);
+          }}
+          jobId={selectedJobForReminder}
+          customerId={customer.id}
+          existingReminders={getRemindersByCustomer(customer.id).filter(r => r.jobId === selectedJobForReminder)}
+        />
+      )}
     </AppLayout>
   );
 }
