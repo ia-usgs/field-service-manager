@@ -42,8 +42,10 @@ export interface Attachment {
   type: 'photo-before' | 'photo-after' | 'receipt' | 'document';
   name: string;
   mimeType: string;
-  data?: string; // Base64 encoded for web
-  filePath?: string; // Filesystem path for Tauri desktop
+  // Tauri desktop: filesystem path only (no base64 in IndexedDB)
+  filePath: string;
+  // Metadata only (safe for IndexedDB)
+  size: number;
   createdAt: string;
 }
 

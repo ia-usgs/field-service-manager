@@ -48,12 +48,12 @@ export function AttachmentManager({
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load attachment URLs (handles both base64 and Tauri file paths)
+  // Load attachment URLs (handles Tauri file paths)
   useEffect(() => {
     const loadUrls = async () => {
       const urls: Record<string, string> = {};
       for (const attachment of attachments) {
-        urls[attachment.id] = await getAttachmentUrl(attachment);
+        urls[attachment.id] = await getAttachmentUrl(attachment.filePath);
       }
       setAttachmentUrls(urls);
     };
@@ -100,15 +100,15 @@ export function AttachmentManager({
       // Process all files
       for (const file of validFiles) {
         const processedFile = await maybeCompressImage(file);
-        const { data, filePath } = await saveAttachmentFile(processedFile, jobId);
+        const { filePath, size } = await saveAttachmentFile(processedFile, jobId);
 
         const newAttachment = await addAttachment({
           jobId,
           type: selectedType,
           name: processedFile.name,
           mimeType: processedFile.type,
-          data,
           filePath,
+          size,
         });
 
         newAttachments.push(newAttachment);

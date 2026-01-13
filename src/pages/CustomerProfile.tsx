@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -25,6 +25,7 @@ import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { JobDialog } from "@/components/jobs/JobDialog";
 import { ReminderDialog } from "@/components/reminders/ReminderDialog";
 import { centsToDollars } from "@/lib/db";
+import { getAttachmentUrl } from "@/lib/fileProcessing";
 import { Attachment } from "@/types";
 import {
   Dialog,
@@ -40,6 +41,7 @@ export default function CustomerProfile() {
   const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false);
   const [selectedJobForReminder, setSelectedJobForReminder] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
 
   const customer = customers.find((c) => c.id === id);
   const customerReminders = id ? getRemindersByCustomer(id) : [];
@@ -55,6 +57,18 @@ export default function CustomerProfile() {
     job,
     attachments: customerAttachments.filter((a) => a.jobId === job.id),
   })).filter((group) => group.attachments.length > 0);
+
+  // Load attachment URLs
+  useEffect(() => {
+    const loadUrls = async () => {
+      const urls: Record<string, string> = {};
+      for (const attachment of customerAttachments) {
+        urls[attachment.id] = await getAttachmentUrl(attachment.filePath);
+      }
+      setAttachmentUrls(urls);
+    };
+    loadUrls();
+  }, [customerAttachments]);
 
   if (!customer) {
     return (
@@ -385,7 +399,7 @@ export default function CustomerProfile() {
                         >
                           {isImage ? (
                             <img
-                              src={attachment.data}
+                              src={attachmentUrls[attachment.id] || ""}
                               alt={attachment.name}
                               className="w-full h-16 object-cover rounded border border-border"
                             />
@@ -488,7 +502,7 @@ export default function CustomerProfile() {
           <DialogContent className="bg-card border-border max-w-4xl p-0">
             <div className="relative">
               <img
-                src={previewAttachment.data}
+                src={attachmentUrls[previewAttachment.id] || ""}
                 alt={previewAttachment.name}
                 className="w-full max-h-[80vh] object-contain"
               />

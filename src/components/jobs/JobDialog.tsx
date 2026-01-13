@@ -6,7 +6,7 @@ import { Plus, Trash2, Bell, Check, Edit2, X, Camera, Upload, FileText } from "l
 import { useStore } from "@/store/useStore";
 import { Job, Part, Reminder, Attachment } from "@/types";
 import { dollarsToCents } from "@/lib/db";
-import { maybeCompressImage, saveAttachmentFile } from "@/lib/fileProcessing";
+import { maybeCompressImage, saveAttachmentFile, getAttachmentUrl } from "@/lib/fileProcessing";
 import {
   Dialog,
   DialogContent,
@@ -72,16 +72,27 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [newReminderData, setNewReminderData] = useState({ title: "", dueDate: "", type: "follow-up" as Reminder["type"] });
   const [selectedAttachmentType, setSelectedAttachmentType] = useState<Attachment["type"]>("photo-before");
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load existing reminders and attachments when dialog opens
   useEffect(() => {
     if (job && open) {
       setExistingReminders(getRemindersByJob(job.id));
-      setExistingAttachments(getAttachmentsByJob(job.id));
+      const jobAttachments = getAttachmentsByJob(job.id);
+      setExistingAttachments(jobAttachments);
+      // Load attachment URLs
+      (async () => {
+        const urls: Record<string, string> = {};
+        for (const attachment of jobAttachments) {
+          urls[attachment.id] = await getAttachmentUrl(attachment.filePath);
+        }
+        setAttachmentUrls(urls);
+      })();
     }
     if (!open) {
       setPendingAttachments([]);
+      setAttachmentUrls({});
     }
   }, [job, open, getRemindersByJob, getAttachmentsByJob]);
 
@@ -239,15 +250,15 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         // Save pending attachments for new jobs
         for (const pending of pendingAttachments) {
           const processedFile = await maybeCompressImage(pending.file);
-          const { data, filePath } = await saveAttachmentFile(processedFile, targetJobId);
+          const { filePath, size } = await saveAttachmentFile(processedFile, targetJobId);
 
           await addAttachment({
             jobId: targetJobId,
             type: pending.type,
             name: processedFile.name,
             mimeType: processedFile.type,
-            data,
             filePath,
+            size,
           });
         }
         
@@ -865,15 +876,15 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                       (async () => {
                         for (const file of selectedFiles) {
                           const processedFile = await maybeCompressImage(file);
-                          const { data, filePath } = await saveAttachmentFile(processedFile, job.id);
+                          const { filePath, size } = await saveAttachmentFile(processedFile, job.id);
 
                           const newAttachment = await addAttachment({
                             jobId: job.id,
                             type: selectedAttachmentType,
                             name: processedFile.name,
                             mimeType: processedFile.type,
-                            data,
                             filePath,
+                            size,
                           });
 
                           setExistingAttachments((prev) => [...prev, newAttachment]);
@@ -933,7 +944,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                   <div key={attachment.id} className="relative group">
                     {attachment.mimeType.startsWith("image/") ? (
                       <img
-                        src={attachment.data}
+                        src={attachmentUrls[attachment.id] || ""}
                         alt={attachment.name}
                         className="w-full h-16 object-cover rounded border border-border"
                       />
