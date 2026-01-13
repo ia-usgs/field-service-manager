@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   DollarSign,
   TrendingUp,
@@ -6,6 +7,9 @@ import {
   Briefcase,
   FileText,
   AlertCircle,
+  Bell,
+  Check,
+  Calendar,
 } from "lucide-react";
 import {
   LineChart,
@@ -29,7 +33,8 @@ import { StatCard } from "@/components/ui/stat-card";
 import { centsToDollars } from "@/lib/db";
 
 export default function Dashboard() {
-  const { invoices, expenses, customers, jobs, isLoading, initialize } = useStore();
+  const navigate = useNavigate();
+  const { invoices, expenses, customers, jobs, isLoading, initialize, getUpcomingReminders, completeReminder } = useStore();
 
   useEffect(() => {
     initialize();
@@ -280,7 +285,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Expense Breakdown */}
         <div className="bg-card border border-border rounded-lg p-6">
           <h3 className="font-semibold mb-4">Expense Breakdown</h3>
@@ -349,6 +354,108 @@ export default function Dashboard() {
               No customer data yet
             </div>
           )}
+        </div>
+
+        {/* Upcoming Reminders */}
+        <div className="bg-card border border-border rounded-lg p-6">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-primary" />
+            Upcoming Reminders
+          </h3>
+          {(() => {
+            const upcomingReminders = getUpcomingReminders(30);
+            const overdueReminders = getUpcomingReminders(0).filter(
+              (r) => new Date(r.dueDate) < new Date()
+            );
+            const allReminders = [...overdueReminders, ...upcomingReminders.filter(
+              (r) => new Date(r.dueDate) >= new Date()
+            )].slice(0, 5);
+
+            if (allReminders.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                  <Calendar className="w-12 h-12 mb-2 opacity-50" />
+                  <p>No upcoming reminders</p>
+                  <p className="text-sm">Add reminders from job details</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                {allReminders.map((reminder) => {
+                  const customer = customers.find((c) => c.id === reminder.customerId);
+                  const isOverdue = new Date(reminder.dueDate) < new Date();
+                  const daysUntil = Math.ceil(
+                    (new Date(reminder.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                  );
+
+                  return (
+                    <div
+                      key={reminder.id}
+                      className={`p-3 rounded-lg border ${
+                        isOverdue
+                          ? "bg-destructive/10 border-destructive/20"
+                          : "bg-secondary/50 border-border"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded ${
+                                reminder.type === "follow-up"
+                                  ? "bg-primary/20 text-primary"
+                                  : reminder.type === "maintenance"
+                                  ? "bg-warning/20 text-warning"
+                                  : reminder.type === "annual-checkup"
+                                  ? "bg-success/20 text-success"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {reminder.type.replace("-", " ")}
+                            </span>
+                            {isOverdue && (
+                              <span className="text-xs text-destructive font-medium">
+                                OVERDUE
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-medium mt-1 truncate">{reminder.title}</p>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {customer?.name || "Unknown"}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {isOverdue
+                              ? `${Math.abs(daysUntil)} days overdue`
+                              : daysUntil === 0
+                              ? "Due today"
+                              : `Due in ${daysUntil} days`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          <button
+                            onClick={() => completeReminder(reminder.id)}
+                            className="p-1.5 hover:bg-success/10 rounded text-success"
+                            title="Mark complete"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => navigate(`/jobs/${reminder.jobId}`)}
+                            className="p-1.5 hover:bg-primary/10 rounded text-primary"
+                            title="View job"
+                          >
+                            <Briefcase className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </AppLayout>
