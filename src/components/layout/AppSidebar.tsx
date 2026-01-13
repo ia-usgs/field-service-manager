@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BarChart3,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -20,6 +21,7 @@ const navItems = [
   { title: "Jobs", url: "/jobs", icon: Briefcase },
   { title: "Invoices", url: "/invoices", icon: FileText },
   { title: "Expenses", url: "/expenses", icon: Receipt },
+  { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
