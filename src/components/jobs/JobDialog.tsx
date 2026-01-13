@@ -18,6 +18,7 @@ const partSchema = z.object({
   quantity: z.coerce.number().min(1),
   unitCost: z.coerce.number().min(0),
   unitPrice: z.coerce.number().min(0),
+  source: z.enum(["inventory", "customer-provided"]),
 });
 
 const reminderPresetSchema = z.object({
@@ -133,6 +134,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           quantity: p.quantity,
           unitCost: p.unitCostCents / 100,
           unitPrice: p.unitPriceCents / 100,
+          source: p.source || "inventory",
         })),
         miscFees: job.miscFeesCents / 100,
         miscFeesDescription: job.miscFeesDescription,
@@ -179,6 +181,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         quantity: p.quantity,
         unitCostCents: dollarsToCents(p.unitCost),
         unitPriceCents: dollarsToCents(p.unitPrice),
+        source: p.source || "inventory",
       }));
 
       const jobData = {
@@ -370,7 +373,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               {!isLocked && (
                 <button
                   type="button"
-                  onClick={() => appendPart({ name: "", quantity: 1, unitCost: 0, unitPrice: 0 })}
+                  onClick={() => appendPart({ name: "", quantity: 1, unitCost: 0, unitPrice: 0, source: "inventory" })}
                   className="text-primary text-sm flex items-center gap-1 hover:underline"
                 >
                   <Plus className="w-4 h-4" />
@@ -379,37 +382,64 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               )}
             </div>
             {partFields.map((field, index) => (
-              <div key={field.id} className="grid grid-cols-5 gap-2 mb-2">
-                <input
-                  {...register(`parts.${index}.name`)}
-                  placeholder="Part name"
-                  className="input-field col-span-2"
-                  disabled={isLocked}
-                />
-                <input
-                  {...register(`parts.${index}.quantity`)}
-                  type="number"
-                  placeholder="Qty"
-                  className="input-field"
-                  disabled={isLocked}
-                />
-                <input
-                  {...register(`parts.${index}.unitPrice`)}
-                  type="number"
-                  step="0.01"
-                  placeholder="Price"
-                  className="input-field"
-                  disabled={isLocked}
-                />
-                {!isLocked && (
-                  <button
-                    type="button"
-                    onClick={() => removePart(index)}
-                    className="p-2 text-destructive hover:bg-destructive/10 rounded"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
+              <div key={field.id} className="space-y-2 mb-3 p-3 bg-secondary/30 rounded-lg">
+                <div className="grid grid-cols-5 gap-2">
+                  <input
+                    {...register(`parts.${index}.name`)}
+                    placeholder="Part name"
+                    className="input-field col-span-2"
+                    disabled={isLocked}
+                  />
+                  <input
+                    {...register(`parts.${index}.quantity`)}
+                    type="number"
+                    placeholder="Qty"
+                    className="input-field"
+                    disabled={isLocked}
+                  />
+                  <input
+                    {...register(`parts.${index}.unitPrice`)}
+                    type="number"
+                    step="0.01"
+                    placeholder="Price"
+                    className="input-field"
+                    disabled={isLocked}
+                  />
+                  {!isLocked && (
+                    <button
+                      type="button"
+                      onClick={() => removePart(index)}
+                      className="p-2 text-destructive hover:bg-destructive/10 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-4">
+                  <label className="text-xs text-muted-foreground">Source:</label>
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      {...register(`parts.${index}.source`)}
+                      value="inventory"
+                      className="accent-primary"
+                      disabled={isLocked}
+                    />
+                    <span>From Inventory</span>
+                    <span className="text-muted-foreground">(markup = income)</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      {...register(`parts.${index}.source`)}
+                      value="customer-provided"
+                      className="accent-primary"
+                      disabled={isLocked}
+                    />
+                    <span>Customer Paid</span>
+                    <span className="text-muted-foreground">(pass-through)</span>
+                  </label>
+                </div>
               </div>
             ))}
           </div>
