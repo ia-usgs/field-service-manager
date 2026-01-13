@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Trash2, Bell } from "lucide-react";
+import { Plus, Trash2, Bell, Check, Edit2, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Job, Part, Reminder } from "@/types";
 import { dollarsToCents } from "@/lib/db";
@@ -60,9 +60,20 @@ const defaultReminders = [
 ];
 
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob } = useStore();
-  const existingReminders = job ? getRemindersByJob(job.id) : [];
+  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder } = useStore();
+  const [existingReminders, setExistingReminders] = useState<Reminder[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [editingReminderData, setEditingReminderData] = useState<{ title: string; dueDate: string; type: Reminder["type"] } | null>(null);
+  const [showAddReminder, setShowAddReminder] = useState(false);
+  const [newReminderData, setNewReminderData] = useState({ title: "", dueDate: "", type: "follow-up" as Reminder["type"] });
+
+  // Load existing reminders when dialog opens
+  useEffect(() => {
+    if (job && open) {
+      setExistingReminders(getRemindersByJob(job.id));
+    }
+  }, [job, open, getRemindersByJob]);
 
   const {
     register,
@@ -427,16 +438,93 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
 
           {/* Service Reminders */}
           <div className="border border-border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Bell className="w-4 h-4 text-primary" />
-              <label className="text-sm font-medium">
-                {job ? "Existing Reminders" : "Schedule Service Reminders"}
-              </label>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-primary" />
+                <label className="text-sm font-medium">
+                  {job ? "Service Reminders" : "Schedule Service Reminders"}
+                </label>
+              </div>
+              {job && !isLocked && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddReminder(!showAddReminder)}
+                  className="text-primary text-sm flex items-center gap-1 hover:underline"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Reminder
+                </button>
+              )}
             </div>
+
+            {/* Add new reminder form for existing jobs */}
+            {job && showAddReminder && (
+              <div className="p-3 bg-primary/10 border border-primary/30 rounded-lg mb-3">
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={newReminderData.type}
+                      onChange={(e) => setNewReminderData({ ...newReminderData, type: e.target.value as Reminder["type"] })}
+                      className="input-field text-sm"
+                    >
+                      <option value="follow-up">Follow-up</option>
+                      <option value="maintenance">Maintenance</option>
+                      <option value="annual-checkup">Annual Checkup</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <input
+                      type="date"
+                      value={newReminderData.dueDate}
+                      onChange={(e) => setNewReminderData({ ...newReminderData, dueDate: e.target.value })}
+                      min={new Date().toISOString().split("T")[0]}
+                      className="input-field text-sm"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={newReminderData.title}
+                    onChange={(e) => setNewReminderData({ ...newReminderData, title: e.target.value })}
+                    placeholder="Reminder title..."
+                    className="input-field w-full text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddReminder(false)}
+                      className="btn-secondary text-xs py-1 px-3"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (newReminderData.title && newReminderData.dueDate && job) {
+                          const newReminder = await addReminder({
+                            jobId: job.id,
+                            customerId: job.customerId,
+                            type: newReminderData.type,
+                            title: newReminderData.title,
+                            description: "",
+                            dueDate: newReminderData.dueDate,
+                          });
+                          setExistingReminders([...existingReminders, newReminder]);
+                          setNewReminderData({ title: "", dueDate: "", type: "follow-up" });
+                          setShowAddReminder(false);
+                        }
+                      }}
+                      disabled={!newReminderData.title || !newReminderData.dueDate}
+                      className="btn-primary text-xs py-1 px-3"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Show existing reminders for editing */}
             {job && existingReminders.length > 0 && (
-              <div className="space-y-2 mb-4">
+              <div className="space-y-2 mb-3">
                 {existingReminders.map((reminder) => (
                   <div
                     key={reminder.id}
@@ -446,37 +534,140 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                         : "bg-secondary/50 border-border"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          reminder.type === "follow-up"
-                            ? "bg-primary/20 text-primary"
-                            : reminder.type === "maintenance"
-                            ? "bg-warning/20 text-warning"
-                            : "bg-success/20 text-success"
-                        }`}>
-                          {reminder.type.replace("-", " ")}
-                        </span>
-                        <p className="font-medium text-sm mt-1">{reminder.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Due: {new Date(reminder.dueDate).toLocaleDateString()}
-                        </p>
+                    {editingReminderId === reminder.id ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={editingReminderData?.type || reminder.type}
+                            onChange={(e) => setEditingReminderData({ ...editingReminderData!, type: e.target.value as Reminder["type"] })}
+                            className="input-field text-sm"
+                          >
+                            <option value="follow-up">Follow-up</option>
+                            <option value="maintenance">Maintenance</option>
+                            <option value="annual-checkup">Annual Checkup</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                          <input
+                            type="date"
+                            value={editingReminderData?.dueDate || reminder.dueDate.split("T")[0]}
+                            onChange={(e) => setEditingReminderData({ ...editingReminderData!, dueDate: e.target.value })}
+                            className="input-field text-sm"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={editingReminderData?.title || reminder.title}
+                          onChange={(e) => setEditingReminderData({ ...editingReminderData!, title: e.target.value })}
+                          className="input-field w-full text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingReminderId(null);
+                              setEditingReminderData(null);
+                            }}
+                            className="btn-secondary text-xs py-1 px-3"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (editingReminderData) {
+                                await updateReminderStore(reminder.id, editingReminderData);
+                                setExistingReminders(existingReminders.map(r => 
+                                  r.id === reminder.id ? { ...r, ...editingReminderData } : r
+                                ));
+                                setEditingReminderId(null);
+                                setEditingReminderData(null);
+                              }
+                            }}
+                            className="btn-primary text-xs py-1 px-3"
+                          >
+                            Save
+                          </button>
+                        </div>
                       </div>
-                      {reminder.completed && (
-                        <span className="text-xs text-success">✓ Completed</span>
-                      )}
-                    </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              reminder.type === "follow-up"
+                                ? "bg-primary/20 text-primary"
+                                : reminder.type === "maintenance"
+                                ? "bg-warning/20 text-warning"
+                                : "bg-success/20 text-success"
+                            }`}>
+                              {reminder.type.replace("-", " ")}
+                            </span>
+                            {reminder.completed && (
+                              <span className="text-xs text-success">✓ Completed</span>
+                            )}
+                          </div>
+                          <p className="font-medium text-sm mt-1">{reminder.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Due: {new Date(reminder.dueDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {!isLocked && (
+                          <div className="flex items-center gap-1">
+                            {!reminder.completed && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingReminderId(reminder.id);
+                                    setEditingReminderData({
+                                      title: reminder.title,
+                                      dueDate: reminder.dueDate.split("T")[0],
+                                      type: reminder.type,
+                                    });
+                                  }}
+                                  className="p-1.5 hover:bg-secondary rounded text-muted-foreground"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await completeReminder(reminder.id);
+                                    setExistingReminders(existingReminders.map(r => 
+                                      r.id === reminder.id ? { ...r, completed: true } : r
+                                    ));
+                                  }}
+                                  className="p-1.5 hover:bg-success/10 rounded text-success"
+                                  title="Mark complete"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await deleteReminder(reminder.id);
+                                setExistingReminders(existingReminders.filter(r => r.id !== reminder.id));
+                              }}
+                              className="p-1.5 hover:bg-destructive/10 rounded text-destructive"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
-                <p className="text-xs text-muted-foreground">
-                  To add or edit reminders, use the Reminders button on the Job Detail page.
-                </p>
               </div>
             )}
 
-            {job && existingReminders.length === 0 && (
-              <p className="text-sm text-muted-foreground mb-3">
-                No reminders set. Use the Reminders button on the Job Detail page to add some.
+            {job && existingReminders.length === 0 && !showAddReminder && (
+              <p className="text-sm text-muted-foreground">
+                No reminders set. Click "Add Reminder" to create one.
               </p>
             )}
 
