@@ -10,6 +10,7 @@ import {
   Bell,
   Check,
   Calendar,
+  Package,
 } from "lucide-react";
 import {
   LineChart,
@@ -169,6 +170,33 @@ export default function Dashboard() {
     }));
   }, [expenses]);
 
+  // Parts profit calculation
+  const partsProfit = useMemo(() => {
+    const completedJobs = jobs.filter((j) =>
+      ["completed", "invoiced", "paid"].includes(j.status)
+    );
+
+    let totalCost = 0;
+    let totalRevenue = 0;
+
+    completedJobs.forEach((job) => {
+      job.parts.forEach((part) => {
+        // Only count inventory parts (not customer-provided)
+        if (part.source !== "customer-provided") {
+          totalCost += part.quantity * part.unitCostCents;
+          totalRevenue += part.quantity * part.unitPriceCents;
+        }
+      });
+    });
+
+    return {
+      cost: totalCost,
+      revenue: totalRevenue,
+      profit: totalRevenue - totalCost,
+      margin: totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0,
+    };
+  }, [jobs]);
+
   const COLORS = ["hsl(199, 89%, 48%)", "hsl(142, 71%, 45%)", "hsl(38, 92%, 50%)", "hsl(262, 83%, 58%)", "hsl(0, 84%, 60%)"];
 
   if (isLoading) {
@@ -221,7 +249,7 @@ export default function Dashboard() {
       </div>
 
       {/* Secondary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <StatCard
           title="Total Customers"
           value={stats.totalCustomers}
@@ -236,6 +264,13 @@ export default function Dashboard() {
           title="Avg Job Value"
           value={`$${centsToDollars(stats.avgJobValue)}`}
           icon={FileText}
+        />
+        <StatCard
+          title="Parts Profit"
+          value={`$${centsToDollars(partsProfit.profit)}`}
+          subtitle={`${partsProfit.margin.toFixed(1)}% margin`}
+          icon={Package}
+          variant={partsProfit.profit >= 0 ? "success" : "destructive"}
         />
       </div>
 

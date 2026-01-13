@@ -381,9 +381,18 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 </button>
               )}
             </div>
+            {partFields.length > 0 && (
+              <div className="grid grid-cols-6 gap-2 mb-1 px-3 text-xs text-muted-foreground">
+                <span className="col-span-2">Name</span>
+                <span>Qty</span>
+                <span>Your Cost</span>
+                <span>Customer Price</span>
+                <span></span>
+              </div>
+            )}
             {partFields.map((field, index) => (
               <div key={field.id} className="space-y-2 mb-3 p-3 bg-secondary/30 rounded-lg">
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-6 gap-2">
                   <input
                     {...register(`parts.${index}.name`)}
                     placeholder="Part name"
@@ -398,12 +407,22 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                     disabled={isLocked}
                   />
                   <input
+                    {...register(`parts.${index}.unitCost`)}
+                    type="number"
+                    step="0.01"
+                    placeholder="Cost"
+                    className="input-field"
+                    disabled={isLocked}
+                    title="Your cost (what you paid)"
+                  />
+                  <input
                     {...register(`parts.${index}.unitPrice`)}
                     type="number"
                     step="0.01"
                     placeholder="Price"
                     className="input-field"
                     disabled={isLocked}
+                    title="Customer price (what you charge)"
                   />
                   {!isLocked && (
                     <button
@@ -415,30 +434,37 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-4">
-                  <label className="text-xs text-muted-foreground">Source:</label>
-                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                    <input
-                      type="radio"
-                      {...register(`parts.${index}.source`)}
-                      value="inventory"
-                      className="accent-primary"
-                      disabled={isLocked}
-                    />
-                    <span>From Inventory</span>
-                    <span className="text-muted-foreground">(markup = income)</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                    <input
-                      type="radio"
-                      {...register(`parts.${index}.source`)}
-                      value="customer-provided"
-                      className="accent-primary"
-                      disabled={isLocked}
-                    />
-                    <span>Customer Paid</span>
-                    <span className="text-muted-foreground">(pass-through)</span>
-                  </label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <label className="text-xs text-muted-foreground">Source:</label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        {...register(`parts.${index}.source`)}
+                        value="inventory"
+                        className="accent-primary"
+                        disabled={isLocked}
+                      />
+                      <span>From Inventory</span>
+                      <span className="text-muted-foreground">(markup = income)</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        {...register(`parts.${index}.source`)}
+                        value="customer-provided"
+                        className="accent-primary"
+                        disabled={isLocked}
+                      />
+                      <span>Customer Paid</span>
+                      <span className="text-muted-foreground">(pass-through)</span>
+                    </label>
+                  </div>
+                  {watchedValues.parts?.[index]?.source === "inventory" && (
+                    <span className="text-xs text-success">
+                      Profit: ${(((watchedValues.parts[index].unitPrice || 0) - (watchedValues.parts[index].unitCost || 0)) * (watchedValues.parts[index].quantity || 0)).toFixed(2)}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
