@@ -21,6 +21,30 @@ export interface Part {
   unitPriceCents: number; // What we charge
 }
 
+export interface Reminder {
+  id: string;
+  jobId: string;
+  customerId: string;
+  type: 'follow-up' | 'maintenance' | 'annual-checkup' | 'custom';
+  title: string;
+  description: string;
+  dueDate: string;
+  completed: boolean;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Attachment {
+  id: string;
+  jobId: string;
+  type: 'photo-before' | 'photo-after' | 'receipt' | 'document';
+  name: string;
+  mimeType: string;
+  data: string; // Base64 encoded for local storage
+  createdAt: string;
+}
+
 export interface Job {
   id: string;
   customerId: string;
@@ -38,6 +62,19 @@ export interface Job {
   createdAt: string;
   updatedAt: string;
   invoiceId?: string;
+  reminders?: Reminder[];
+  attachments?: Attachment[];
+}
+
+export interface Payment {
+  id: string;
+  invoiceId: string;
+  amountCents: number;
+  type: 'payment' | 'refund';
+  method: string;
+  notes?: string;
+  date: string;
+  createdAt: string;
 }
 
 export interface Invoice {
@@ -54,7 +91,9 @@ export interface Invoice {
   taxCents: number;
   totalCents: number;
   paidAmountCents: number;
-  paymentStatus: 'unpaid' | 'partial' | 'paid';
+  paymentStatus: 'unpaid' | 'partial' | 'paid' | 'overpaid';
+  payments?: Payment[];
+  // Legacy fields for backward compatibility
   paymentMethod?: string;
   paymentDate?: string;
   paymentNotes?: string;
@@ -89,9 +128,9 @@ export interface AppSettings {
 
 export interface AuditLog {
   id: string;
-  entityType: 'customer' | 'job' | 'invoice' | 'expense';
+  entityType: 'customer' | 'job' | 'invoice' | 'expense' | 'payment' | 'reminder';
   entityId: string;
-  action: 'created' | 'updated' | 'deleted' | 'paid';
+  action: 'created' | 'updated' | 'deleted' | 'paid' | 'refunded';
   details: string;
   timestamp: string;
 }

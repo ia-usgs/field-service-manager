@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Edit, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit, FileText, Trash2, Bell, Camera } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { JobDialog } from "@/components/jobs/JobDialog";
+import { ReminderDialog } from "@/components/reminders/ReminderDialog";
+import { AttachmentManager } from "@/components/jobs/AttachmentManager";
 import { centsToDollars } from "@/lib/db";
 import {
   AlertDialog,
@@ -19,13 +21,17 @@ import {
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { jobs, customers, invoices, deleteJob } = useStore();
+  const { jobs, customers, invoices, deleteJob, getRemindersByJob, getAttachmentsByJob } = useStore();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false);
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
 
   const job = jobs.find((j) => j.id === id);
   const customer = job ? customers.find((c) => c.id === job.customerId) : null;
   const invoice = job?.invoiceId ? invoices.find((i) => i.id === job.invoiceId) : null;
+  const reminders = job ? getRemindersByJob(job.id) : [];
+  const attachments = job ? getAttachmentsByJob(job.id) : [];
 
   if (!job) {
     return (
@@ -100,6 +106,20 @@ export default function JobDetail() {
             Delete
           </button>
         )}
+        <button
+          onClick={() => setIsAttachmentDialogOpen(true)}
+          className="btn-secondary flex items-center gap-2"
+        >
+          <Camera className="w-4 h-4" />
+          Attachments ({attachments.length})
+        </button>
+        <button
+          onClick={() => setIsReminderDialogOpen(true)}
+          className="btn-secondary flex items-center gap-2"
+        >
+          <Bell className="w-4 h-4" />
+          Reminders ({reminders.filter(r => !r.completed).length})
+        </button>
         <button
           onClick={() => setIsEditDialogOpen(true)}
           className="btn-secondary flex items-center gap-2"
@@ -223,6 +243,21 @@ export default function JobDetail() {
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
         job={job}
+      />
+
+      <ReminderDialog
+        open={isReminderDialogOpen}
+        onOpenChange={setIsReminderDialogOpen}
+        jobId={job.id}
+        customerId={job.customerId}
+        existingReminders={reminders}
+      />
+
+      <AttachmentManager
+        open={isAttachmentDialogOpen}
+        onOpenChange={setIsAttachmentDialogOpen}
+        jobId={job.id}
+        existingAttachments={attachments}
       />
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
