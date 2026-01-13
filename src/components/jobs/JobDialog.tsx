@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Trash2, Bell, Check, Edit2, X } from "lucide-react";
+import { Plus, Trash2, Bell, Check, Edit2, X, Camera, Upload, FileText } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { Job, Part, Reminder } from "@/types";
+import { Job, Part, Reminder, Attachment } from "@/types";
 import { dollarsToCents } from "@/lib/db";
 import {
   Dialog,
@@ -60,20 +60,28 @@ const defaultReminders = [
 ];
 
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder } = useStore();
+  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment } = useStore();
   const [existingReminders, setExistingReminders] = useState<Reminder[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<{ file: File; type: Attachment["type"] }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
   const [editingReminderData, setEditingReminderData] = useState<{ title: string; dueDate: string; type: Reminder["type"] } | null>(null);
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [newReminderData, setNewReminderData] = useState({ title: "", dueDate: "", type: "follow-up" as Reminder["type"] });
+  const [selectedAttachmentType, setSelectedAttachmentType] = useState<Attachment["type"]>("photo-before");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load existing reminders when dialog opens
+  // Load existing reminders and attachments when dialog opens
   useEffect(() => {
     if (job && open) {
       setExistingReminders(getRemindersByJob(job.id));
+      setExistingAttachments(getAttachmentsByJob(job.id));
     }
-  }, [job, open, getRemindersByJob]);
+    if (!open) {
+      setPendingAttachments([]);
+    }
+  }, [job, open, getRemindersByJob, getAttachmentsByJob]);
 
   const {
     register,
@@ -223,6 +231,24 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
             dueDate,
           });
         }
+
+        // Save pending attachments for new jobs
+        for (const pending of pendingAttachments) {
+          const reader = new FileReader();
+          await new Promise<void>((resolve) => {
+            reader.onloadend = async () => {
+              await addAttachment({
+                jobId: targetJobId,
+                type: pending.type,
+                name: pending.file.name,
+                mimeType: pending.file.type,
+                data: reader.result as string,
+              });
+              resolve();
+            };
+            reader.readAsDataURL(pending.file);
+          });
+        }
         
         // If created as completed, auto-generate invoice
         if (data.status === "completed") {
@@ -232,6 +258,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
 
       onOpenChange(false);
       reset();
+      setPendingAttachments([]);
     } finally {
       setIsSubmitting(false);
     }
@@ -744,6 +771,139 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                   Reminders will appear on your dashboard when due
                 </p>
               </>
+            )}
+          </div>
+
+          {/* Attachments */}
+          <div className="border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-primary" />
+                <label className="text-sm font-medium">Attachments</label>
+              </div>
+            </div>
+
+            {/* Upload controls */}
+            {!isLocked && (
+              <div className="flex items-center gap-2 mb-3">
+                <select
+                  value={selectedAttachmentType}
+                  onChange={(e) => setSelectedAttachmentType(e.target.value as Attachment["type"])}
+                  className="input-field text-sm py-1"
+                >
+                  <option value="photo-before">Before Photo</option>
+                  <option value="photo-after">After Photo</option>
+                  <option value="receipt">Receipt</option>
+                  <option value="document">Document</option>
+                </select>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 5 * 1024 * 1024) {
+                        alert("File size must be less than 5MB");
+                        return;
+                      }
+                      if (job) {
+                        // For existing jobs, save immediately
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                          const newAttachment = await addAttachment({
+                            jobId: job.id,
+                            type: selectedAttachmentType,
+                            name: file.name,
+                            mimeType: file.type,
+                            data: reader.result as string,
+                          });
+                          setExistingAttachments([...existingAttachments, newAttachment]);
+                        };
+                        reader.readAsDataURL(file);
+                      } else {
+                        // For new jobs, queue for saving after job creation
+                        setPendingAttachments([...pendingAttachments, { file, type: selectedAttachmentType }]);
+                      }
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }
+                  }}
+                  accept="image/*,.pdf,.doc,.docx"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="btn-secondary text-sm py-1 px-3 flex items-center gap-1"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload
+                </button>
+              </div>
+            )}
+
+            {/* Pending attachments for new jobs */}
+            {!job && pendingAttachments.length > 0 && (
+              <div className="space-y-2 mb-3">
+                <p className="text-xs text-muted-foreground">Pending uploads (will save with job):</p>
+                {pendingAttachments.map((pending, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-secondary/50 rounded text-sm">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      <span className="truncate max-w-[200px]">{pending.file.name}</span>
+                      <span className="text-xs text-muted-foreground">({pending.type.replace("-", " ")})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPendingAttachments(pendingAttachments.filter((_, i) => i !== index))}
+                      className="p-1 hover:bg-destructive/10 rounded text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Existing attachments for editing */}
+            {job && existingAttachments.length > 0 && (
+              <div className="grid grid-cols-4 gap-2">
+                {existingAttachments.map((attachment) => (
+                  <div key={attachment.id} className="relative group">
+                    {attachment.mimeType.startsWith("image/") ? (
+                      <img
+                        src={attachment.data}
+                        alt={attachment.name}
+                        className="w-full h-16 object-cover rounded border border-border"
+                      />
+                    ) : (
+                      <div className="w-full h-16 flex items-center justify-center bg-secondary/50 rounded border border-border">
+                        <FileText className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await deleteAttachment(attachment.id);
+                          setExistingAttachments(existingAttachments.filter(a => a.id !== attachment.id));
+                        }}
+                        className="absolute -top-1 -right-1 p-1 bg-destructive rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    )}
+                    <p className="text-xs text-muted-foreground truncate mt-1">{attachment.type.replace("-", " ")}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {job && existingAttachments.length === 0 && pendingAttachments.length === 0 && (
+              <p className="text-sm text-muted-foreground">No attachments yet.</p>
+            )}
+
+            {!job && pendingAttachments.length === 0 && (
+              <p className="text-sm text-muted-foreground">Upload photos, receipts, or documents for this job.</p>
             )}
           </div>
 

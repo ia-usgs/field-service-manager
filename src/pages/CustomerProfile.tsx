@@ -13,6 +13,10 @@ import {
   Bell,
   Check,
   Trash2,
+  Camera,
+  Image as ImageIcon,
+  Receipt,
+  ZoomIn,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -21,18 +25,36 @@ import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { JobDialog } from "@/components/jobs/JobDialog";
 import { ReminderDialog } from "@/components/reminders/ReminderDialog";
 import { centsToDollars } from "@/lib/db";
+import { Attachment } from "@/types";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 
 export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { customers, jobs, invoices, getRemindersByCustomer, completeReminder, deleteReminder } = useStore();
+  const { customers, jobs, invoices, getRemindersByCustomer, completeReminder, deleteReminder, attachments } = useStore();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isJobDialogOpen, setIsJobDialogOpen] = useState(false);
   const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false);
   const [selectedJobForReminder, setSelectedJobForReminder] = useState<string | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
 
   const customer = customers.find((c) => c.id === id);
   const customerReminders = id ? getRemindersByCustomer(id) : [];
+  const customerJobs = jobs.filter((j) => j.customerId === id);
+  
+  // Get all attachments for this customer's jobs
+  const customerAttachments = attachments.filter((a) => 
+    customerJobs.some((j) => j.id === a.jobId)
+  );
+  
+  // Group attachments by job
+  const attachmentsByJob = customerJobs.map((job) => ({
+    job,
+    attachments: customerAttachments.filter((a) => a.jobId === job.id),
+  })).filter((group) => group.attachments.length > 0);
 
   if (!customer) {
     return (
@@ -44,7 +66,6 @@ export default function CustomerProfile() {
     );
   }
 
-  const customerJobs = jobs.filter((j) => j.customerId === id);
   const customerInvoices = invoices.filter((i) => i.customerId === id);
 
   const totalSpend = customerInvoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
@@ -55,6 +76,18 @@ export default function CustomerProfile() {
     customerInvoices.length > 0
       ? customerInvoices.reduce((sum, inv) => sum + inv.totalCents, 0) / customerInvoices.length
       : 0;
+
+  const getAttachmentIcon = (type: Attachment["type"]) => {
+    switch (type) {
+      case "photo-before":
+      case "photo-after":
+        return ImageIcon;
+      case "receipt":
+        return Receipt;
+      default:
+        return FileText;
+    }
+  };
 
   const handleCompleteReminder = async (reminderId: string) => {
     await completeReminder(reminderId);
@@ -317,6 +350,72 @@ export default function CustomerProfile() {
         )}
       </div>
 
+      {/* Attachments by Job */}
+      <div className="bg-card border border-border rounded-lg p-6 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Camera className="w-5 h-5" />
+          <h3 className="font-semibold">Attachments & Media</h3>
+        </div>
+        {attachmentsByJob.length > 0 ? (
+          <div className="space-y-4">
+            {attachmentsByJob
+              .sort((a, b) => new Date(b.job.dateOfService).getTime() - new Date(a.job.dateOfService).getTime())
+              .map(({ job: relatedJob, attachments: jobAttachments }) => (
+                <div key={relatedJob.id} className="border border-border rounded-lg p-4">
+                  <div
+                    className="flex items-center justify-between mb-3 cursor-pointer hover:text-primary"
+                    onClick={() => navigate(`/jobs/${relatedJob.id}`)}
+                  >
+                    <div>
+                      <p className="font-medium text-sm">{relatedJob.problemDescription.substring(0, 50)}...</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(relatedJob.dateOfService).toLocaleDateString()} · {jobAttachments.length} files
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                    {jobAttachments.map((attachment) => {
+                      const isImage = attachment.mimeType.startsWith("image/");
+                      const Icon = getAttachmentIcon(attachment.type);
+                      return (
+                        <div
+                          key={attachment.id}
+                          className="relative group cursor-pointer"
+                          onClick={() => isImage && setPreviewAttachment(attachment)}
+                        >
+                          {isImage ? (
+                            <img
+                              src={attachment.data}
+                              alt={attachment.name}
+                              className="w-full h-16 object-cover rounded border border-border"
+                            />
+                          ) : (
+                            <div className="w-full h-16 flex flex-col items-center justify-center bg-secondary/50 rounded border border-border">
+                              <Icon className="w-5 h-5 text-muted-foreground" />
+                            </div>
+                          )}
+                          {isImage && (
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+                              <ZoomIn className="w-4 h-4 text-white" />
+                            </div>
+                          )}
+                          <p className="text-xs text-muted-foreground truncate mt-1 text-center">
+                            {attachment.type.replace("-", " ")}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-center py-8">
+            No attachments yet. Add photos and documents to jobs to see them here.
+          </p>
+        )}
+      </div>
+
       {/* Invoice History */}
       <div className="bg-card border border-border rounded-lg p-6">
         <h3 className="font-semibold mb-4">Invoice History</h3>
@@ -381,6 +480,27 @@ export default function CustomerProfile() {
           customerId={customer.id}
           existingReminders={getRemindersByCustomer(customer.id).filter(r => r.jobId === selectedJobForReminder)}
         />
+      )}
+
+      {/* Image Preview Modal */}
+      {previewAttachment && (
+        <Dialog open={!!previewAttachment} onOpenChange={() => setPreviewAttachment(null)}>
+          <DialogContent className="bg-card border-border max-w-4xl p-0">
+            <div className="relative">
+              <img
+                src={previewAttachment.data}
+                alt={previewAttachment.name}
+                className="w-full max-h-[80vh] object-contain"
+              />
+              <div className="p-4 bg-secondary/50">
+                <p className="text-sm font-medium">{previewAttachment.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {previewAttachment.type.replace("-", " ")} · Uploaded: {new Date(previewAttachment.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </AppLayout>
   );
