@@ -10,6 +10,15 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  build: {
+    rollupOptions: {
+      external: [
+        "@tauri-apps/api/fs",
+        "@tauri-apps/api/path",
+        "@tauri-apps/api/tauri",
+      ],
+    },
+  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
