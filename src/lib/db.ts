@@ -49,7 +49,7 @@ interface ServiceManagerDB extends DBSchema {
 }
 
 const DB_NAME = 'service-manager-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3; // Bumped to force schema rebuild after removing attachment.data
 
 let dbInstance: IDBPDatabase<ServiceManagerDB> | null = null;
 

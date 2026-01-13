@@ -31,91 +31,75 @@ export async function maybeCompressImage(file: File): Promise<File> {
   }
 }
 
-export function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 /**
  * Save a file for attachment storage.
- * - Tauri: Writes to filesystem, returns { filePath }
- * - Web: Converts to base64, returns { data }
+ * Writes to Tauri filesystem and returns { filePath, size }.
+ * This is a desktop-only app - attachments are stored on the local filesystem.
  */
 export async function saveAttachmentFile(
   file: File,
   jobId: string
-): Promise<{ data?: string; filePath?: string }> {
-  if (isTauri()) {
-    try {
-      // Dynamic import of Tauri APIs
-      const { writeBinaryFile, createDir } = await import("@tauri-apps/api/fs");
-      const { appDataDir, join } = await import("@tauri-apps/api/path");
-
-      const baseDir = await appDataDir();
-      const jobDir = await join(baseDir, "attachments", jobId);
-
-      // Create directory if it doesn't exist
-      await createDir(jobDir, { recursive: true });
-
-      const filePath = await join(jobDir, file.name);
-
-      // IMPORTANT (Tauri): avoid IPC payload limits by writing in chunks.
-      // Tauri IPC can error around ~5MB when passing large payloads.
-      const chunkSize = 1024 * 1024 * 2; // 2MB chunks (safe under typical IPC limits)
-      let offset = 0;
-      let first = true;
-
-      while (offset < file.size) {
-        const end = Math.min(offset + chunkSize, file.size);
-        const chunk = await file.slice(offset, end).arrayBuffer();
-
-        await writeBinaryFile(filePath, new Uint8Array(chunk), {
-          append: !first,
-        });
-
-        first = false;
-        offset = end;
-      }
-
-      return { filePath };
-    } catch (error) {
-      console.error("Tauri file write failed, falling back to base64:", error);
-      // Fallback to base64 if Tauri APIs fail
-      const data = await fileToDataUrl(file);
-      return { data };
-    }
-  } else {
-    // Web: use base64
-    const data = await fileToDataUrl(file);
-    return { data };
+): Promise<{ filePath: string; size: number }> {
+  if (!isTauri()) {
+    throw new Error("Attachments require Tauri desktop environment");
   }
+
+  // Dynamic import of Tauri APIs
+  const { writeBinaryFile, createDir } = await import("@tauri-apps/api/fs");
+  const { appDataDir, join } = await import("@tauri-apps/api/path");
+
+  const baseDir = await appDataDir();
+  const jobDir = await join(baseDir, "attachments", jobId);
+
+  // Create directory if it doesn't exist
+  await createDir(jobDir, { recursive: true });
+
+  // Generate unique filename to avoid collisions
+  const timestamp = Date.now();
+  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const uniqueName = `${timestamp}_${safeName}`;
+  const filePath = await join(jobDir, uniqueName);
+
+  // IMPORTANT (Tauri): avoid IPC payload limits by writing in chunks.
+  // Tauri IPC can error around ~5MB when passing large payloads.
+  const chunkSize = 1024 * 1024 * 2; // 2MB chunks (safe under typical IPC limits)
+  let offset = 0;
+  let first = true;
+
+  while (offset < file.size) {
+    const end = Math.min(offset + chunkSize, file.size);
+    const chunk = await file.slice(offset, end).arrayBuffer();
+
+    await writeBinaryFile(filePath, new Uint8Array(chunk), {
+      append: !first,
+    });
+
+    first = false;
+    offset = end;
+  }
+
+  return { filePath, size: file.size };
 }
 
 /**
  * Get the display URL for an attachment.
- * - Tauri: Uses convertFileSrc for local file protocol
- * - Web: Returns the base64 data URL directly
+ * Uses Tauri's convertFileSrc for local file protocol.
  */
-export async function getAttachmentUrl(attachment: { data?: string; filePath?: string }): Promise<string> {
-  if (attachment.data) {
-    return attachment.data;
-  }
+export async function getAttachmentUrl(filePath: string): Promise<string> {
+  if (!filePath) return "";
   
-  if (attachment.filePath && isTauri()) {
-    try {
-      const { convertFileSrc } = await import("@tauri-apps/api/tauri");
-      return convertFileSrc(attachment.filePath);
-    } catch (error) {
-      console.error("Failed to convert file path:", error);
-      return "";
-    }
+  if (!isTauri()) {
+    console.warn("getAttachmentUrl: Not in Tauri environment");
+    return "";
   }
-  
-  return "";
+
+  try {
+    const { convertFileSrc } = await import("@tauri-apps/api/tauri");
+    return convertFileSrc(filePath);
+  } catch (error) {
+    console.error("Failed to convert file path:", error);
+    return "";
+  }
 }
 
 /**
