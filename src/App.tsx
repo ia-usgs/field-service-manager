@@ -7,7 +7,9 @@ import Dashboard from "./pages/Dashboard";
 import Customers from "./pages/Customers";
 import CustomerProfile from "./pages/CustomerProfile";
 import Jobs from "./pages/Jobs";
+import JobDetail from "./pages/JobDetail";
 import Invoices from "./pages/Invoices";
+import InvoiceDetail from "./pages/InvoiceDetail";
 import Expenses from "./pages/Expenses";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -26,7 +28,9 @@ const App = () => (
           <Route path="/customers" element={<Customers />} />
           <Route path="/customers/:id" element={<CustomerProfile />} />
           <Route path="/jobs" element={<Jobs />} />
+          <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/invoices" element={<Invoices />} />
+          <Route path="/invoices/:id" element={<InvoiceDetail />} />
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />

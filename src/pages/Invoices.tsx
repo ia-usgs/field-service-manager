@@ -10,6 +10,7 @@ import { centsToDollars } from "@/lib/db";
 import { Invoice } from "@/types";
 
 export default function Invoices() {
+  const navigate = useNavigate();
   const { invoices, customers, jobs } = useStore();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -191,6 +192,7 @@ export default function Invoices() {
         keyField="id"
         searchable
         searchPlaceholder="Search invoices..."
+        onRowClick={(inv) => navigate(`/invoices/${inv.id}`)}
         emptyMessage="No invoices yet. Invoices are automatically generated when jobs are completed."
       />
 

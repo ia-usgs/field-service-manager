@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -10,9 +9,9 @@ import { centsToDollars } from "@/lib/db";
 import { Job } from "@/types";
 
 export default function Jobs() {
-  const navigate = useNavigate();
   const { jobs, customers } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const filteredJobs = useMemo(() => {
@@ -48,6 +47,21 @@ export default function Jobs() {
     completed: "status-completed",
     invoiced: "status-completed",
     paid: "status-paid",
+  };
+
+  const handleRowClick = (job: typeof jobsWithCustomer[0]) => {
+    const fullJob = jobs.find((j) => j.id === job.id);
+    if (fullJob) {
+      setSelectedJob(fullJob);
+      setIsDialogOpen(true);
+    }
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      setSelectedJob(null);
+    }
   };
 
   const columns = [
@@ -114,7 +128,10 @@ export default function Jobs() {
         description="Track and manage work orders"
         actions={
           <button
-            onClick={() => setIsDialogOpen(true)}
+            onClick={() => {
+              setSelectedJob(null);
+              setIsDialogOpen(true);
+            }}
             className="btn-primary flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -148,11 +165,15 @@ export default function Jobs() {
         keyField="id"
         searchable
         searchPlaceholder="Search jobs..."
-        onRowClick={(job) => setIsDialogOpen(true)}
+        onRowClick={handleRowClick}
         emptyMessage="No jobs found. Create your first job to get started."
       />
 
-      <JobDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
+      <JobDialog
+        open={isDialogOpen}
+        onOpenChange={handleDialogClose}
+        job={selectedJob || undefined}
+      />
     </AppLayout>
   );
 }
