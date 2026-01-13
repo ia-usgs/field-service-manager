@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Bell } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { Job, Part } from "@/types";
+import { Job, Part, Reminder } from "@/types";
 import { dollarsToCents } from "@/lib/db";
 import {
   Dialog,
@@ -20,6 +20,14 @@ const partSchema = z.object({
   unitPrice: z.coerce.number().min(0),
 });
 
+const reminderPresetSchema = z.object({
+  enabled: z.boolean(),
+  type: z.enum(["follow-up", "maintenance", "annual-checkup", "custom"]),
+  title: z.string(),
+  daysFromNow: z.coerce.number().optional(),
+  customDate: z.string().optional(),
+});
+
 const jobSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
   dateOfService: z.string().min(1, "Date is required"),
@@ -33,6 +41,7 @@ const jobSchema = z.object({
   taxRate: z.coerce.number().min(0).max(100),
   technicianNotes: z.string().max(1000).optional(),
   status: z.enum(["quoted", "in-progress", "completed"]),
+  reminders: z.array(reminderPresetSchema).optional(),
 });
 
 type JobFormData = z.infer<typeof jobSchema>;
@@ -44,8 +53,14 @@ interface JobDialogProps {
   customerId?: string;
 }
 
+const defaultReminders = [
+  { enabled: false, type: "follow-up" as const, title: "Follow-up service check", daysFromNow: 30 },
+  { enabled: false, type: "maintenance" as const, title: "Scheduled maintenance", daysFromNow: 90 },
+  { enabled: false, type: "annual-checkup" as const, title: "Annual checkup due", daysFromNow: 365 },
+];
+
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings } = useStore();
+  const { addJob, updateJob, completeJob, customers, settings, addReminder } = useStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
@@ -70,12 +85,18 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
       taxRate: settings?.defaultTaxRate || 8.25,
       technicianNotes: "",
       status: "quoted",
+      reminders: defaultReminders,
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields: partFields, append: appendPart, remove: removePart } = useFieldArray({
     control,
     name: "parts",
+  });
+
+  const { fields: reminderFields, update: updateReminder } = useFieldArray({
+    control,
+    name: "reminders",
   });
 
   useEffect(() => {
@@ -98,6 +119,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         taxRate: job.taxRate,
         technicianNotes: job.technicianNotes,
         status: job.status === "invoiced" || job.status === "paid" ? "completed" : job.status,
+        reminders: defaultReminders, // Already created reminders managed separately
       });
     } else {
       reset({
@@ -113,6 +135,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         taxRate: settings?.defaultTaxRate || 8.25,
         technicianNotes: "",
         status: "quoted",
+        reminders: defaultReminders,
       });
     }
   }, [job, customerId, reset, open, settings]);
@@ -153,8 +176,11 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         status: data.status as Job["status"],
       };
 
+      let targetJobId: string;
+
       if (job) {
         await updateJob(job.id, jobData);
+        targetJobId = job.id;
         
         // If status changed to completed, auto-generate invoice
         if (data.status === "completed" && job.status !== "completed" && job.status !== "invoiced" && job.status !== "paid") {
@@ -162,6 +188,29 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         }
       } else {
         const newJob = await addJob(jobData);
+        targetJobId = newJob.id;
+        
+        // Create reminders for new jobs
+        const enabledReminders = (data.reminders || []).filter((r) => r.enabled);
+        for (const reminder of enabledReminders) {
+          let dueDate: string;
+          if (reminder.customDate) {
+            dueDate = reminder.customDate;
+          } else {
+            const date = new Date();
+            date.setDate(date.getDate() + (reminder.daysFromNow || 30));
+            dueDate = date.toISOString().split("T")[0];
+          }
+
+          await addReminder({
+            jobId: targetJobId,
+            customerId: data.customerId,
+            type: reminder.type,
+            title: reminder.title,
+            description: "",
+            dueDate,
+          });
+        }
         
         // If created as completed, auto-generate invoice
         if (data.status === "completed") {
@@ -282,7 +331,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               {!isLocked && (
                 <button
                   type="button"
-                  onClick={() => append({ name: "", quantity: 1, unitCost: 0, unitPrice: 0 })}
+                  onClick={() => appendPart({ name: "", quantity: 1, unitCost: 0, unitPrice: 0 })}
                   className="text-primary text-sm flex items-center gap-1 hover:underline"
                 >
                   <Plus className="w-4 h-4" />
@@ -290,7 +339,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 </button>
               )}
             </div>
-            {fields.map((field, index) => (
+            {partFields.map((field, index) => (
               <div key={field.id} className="grid grid-cols-5 gap-2 mb-2">
                 <input
                   {...register(`parts.${index}.name`)}
@@ -316,7 +365,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 {!isLocked && (
                   <button
                     type="button"
-                    onClick={() => remove(index)}
+                    onClick={() => removePart(index)}
                     className="p-2 text-destructive hover:bg-destructive/10 rounded"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -374,6 +423,85 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               </select>
             </div>
           </div>
+
+          {/* Service Reminders - Only show for new jobs */}
+          {!job && (
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Bell className="w-4 h-4 text-primary" />
+                <label className="text-sm font-medium">Schedule Service Reminders</label>
+              </div>
+              <div className="space-y-3">
+                {reminderFields.map((field, index) => {
+                  const watchedReminder = watch(`reminders.${index}`);
+                  return (
+                    <div
+                      key={field.id}
+                      className={`p-3 rounded-lg border transition-colors ${
+                        watchedReminder?.enabled
+                          ? "bg-primary/10 border-primary/30"
+                          : "bg-secondary/30 border-border"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          {...register(`reminders.${index}.enabled`)}
+                          className="w-4 h-4 rounded border-border"
+                        />
+                        <div className="flex-1">
+                          <input
+                            {...register(`reminders.${index}.title`)}
+                            className="input-field w-full text-sm"
+                            placeholder="Reminder title"
+                          />
+                        </div>
+                      </div>
+                      {watchedReminder?.enabled && (
+                        <div className="mt-3 ml-7 flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Due in:</span>
+                          <select
+                            value={watchedReminder.daysFromNow || "custom"}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === "custom") {
+                                updateReminder(index, { ...watchedReminder, daysFromNow: undefined });
+                              } else {
+                                updateReminder(index, {
+                                  ...watchedReminder,
+                                  daysFromNow: parseInt(value),
+                                  customDate: undefined,
+                                });
+                              }
+                            }}
+                            className="input-field text-sm py-1"
+                          >
+                            <option value={30}>30 days</option>
+                            <option value={60}>60 days</option>
+                            <option value={90}>90 days</option>
+                            <option value={180}>6 months</option>
+                            <option value={365}>1 year</option>
+                            <option value="custom">Custom date</option>
+                          </select>
+                          {!watchedReminder.daysFromNow && (
+                            <input
+                              type="date"
+                              {...register(`reminders.${index}.customDate`)}
+                              min={new Date().toISOString().split("T")[0]}
+                              className="input-field text-sm py-1"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Reminders will appear on your dashboard when due
+              </p>
+            </div>
+          )}
 
           {/* Technician Notes */}
           <div>
