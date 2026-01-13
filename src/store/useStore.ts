@@ -308,13 +308,28 @@ export const useStore = create<AppState>((set, get) => ({
 
     // Calculate totals
     const laborTotalCents = Math.round(job.laborHours * job.laborRateCents);
-    const partsTotalCents = job.parts.reduce(
+    
+    // Separate inventory parts (income) from customer-provided parts (pass-through)
+    const inventoryParts = job.parts.filter(p => p.source !== 'customer-provided');
+    const passThroughParts = job.parts.filter(p => p.source === 'customer-provided');
+    
+    const partsTotalCents = inventoryParts.reduce(
       (sum, part) => sum + part.quantity * part.unitPriceCents,
       0
     );
-    const subtotalCents = laborTotalCents + partsTotalCents + job.miscFeesCents;
+    const passThroughPartsCents = passThroughParts.reduce(
+      (sum, part) => sum + part.quantity * part.unitPriceCents,
+      0
+    );
+    
+    // Subtotal includes everything for invoice display
+    const subtotalCents = laborTotalCents + partsTotalCents + passThroughPartsCents + job.miscFeesCents;
     const taxCents = Math.round(subtotalCents * (job.taxRate / 100));
     const totalCents = subtotalCents + taxCents;
+    
+    // Income amount excludes pass-through parts (what we actually earned)
+    const incomeAmountCents = laborTotalCents + partsTotalCents + job.miscFeesCents + 
+      Math.round((laborTotalCents + partsTotalCents + job.miscFeesCents) * (job.taxRate / 100));
 
     // Generate invoice number
     const invoiceNumber = `${settings.invoicePrefix}${settings.nextInvoiceNumber}`;
@@ -329,10 +344,12 @@ export const useStore = create<AppState>((set, get) => ({
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
       laborTotalCents,
       partsTotalCents,
+      passThroughPartsCents,
       miscFeesCents: job.miscFeesCents,
       subtotalCents,
       taxCents,
       totalCents,
+      incomeAmountCents,
       paidAmountCents: 0,
       paymentStatus: 'unpaid',
       payments: [],
