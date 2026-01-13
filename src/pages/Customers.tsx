@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, Mail, Phone, MapPin } from "lucide-react";
+import { Plus, Search, Mail, Phone, MapPin, Upload, Users } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -8,13 +8,92 @@ import { DataTable } from "@/components/ui/data-table";
 import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { centsToDollars } from "@/lib/db";
 import { Customer } from "@/types";
+import { toast } from "@/hooks/use-toast";
+
+// Interface for the imported JSON format
+interface ImportedCustomerData {
+  next?: number;
+  byEmail: {
+    [email: string]: {
+      customerNo: number;
+      name: string;
+      email: string;
+      phone: string;
+      firstSeen: string;
+      lastSeen: string;
+    };
+  };
+}
 
 export default function Customers() {
   const navigate = useNavigate();
-  const { customers, jobs, invoices } = useStore();
+  const { customers, jobs, invoices, addCustomer } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeCustomers = customers.filter((c) => !c.archived);
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const data: ImportedCustomerData = JSON.parse(text);
+
+      if (!data.byEmail) {
+        throw new Error("Invalid JSON format. Expected 'byEmail' object.");
+      }
+
+      const existingEmails = new Set(customers.map((c) => c.email.toLowerCase()));
+      const importedCustomers = Object.values(data.byEmail);
+      let imported = 0;
+      let skipped = 0;
+
+      for (const customer of importedCustomers) {
+        // Skip if email already exists
+        if (existingEmails.has(customer.email.toLowerCase())) {
+          skipped++;
+          continue;
+        }
+
+        await addCustomer({
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone || "",
+          address: "",
+          notes: `Imported customer #${customer.customerNo}. First seen: ${new Date(customer.firstSeen).toLocaleDateString()}`,
+          tags: ["imported"],
+        });
+
+        existingEmails.add(customer.email.toLowerCase());
+        imported++;
+      }
+
+      toast({
+        title: "Import Complete",
+        description: `Imported ${imported} customers. ${skipped > 0 ? `Skipped ${skipped} duplicates.` : ""}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Import Failed",
+        description: error instanceof Error ? error.message : "Failed to parse JSON file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   const customersWithStats = useMemo(() => {
     return activeCustomers.map((customer) => {
@@ -152,15 +231,43 @@ export default function Customers() {
         title="Customers"
         description="Manage your customer relationships"
         actions={
-          <button
-            onClick={() => setIsDialogOpen(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Customer
-          </button>
+          <div className="flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <button
+              onClick={handleImportClick}
+              disabled={isImporting}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              {isImporting ? "Importing..." : "Import JSON"}
+            </button>
+            <button
+              onClick={() => setIsDialogOpen(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Customer
+            </button>
+          </div>
         }
       />
+
+      {/* Customer Count Card */}
+      <div className="flex items-center gap-4 mb-6 p-4 bg-card border border-border rounded-lg">
+        <div className="p-3 rounded-lg bg-primary/20">
+          <Users className="w-6 h-6 text-primary" />
+        </div>
+        <div>
+          <p className="text-sm text-muted-foreground">Total Customers</p>
+          <p className="text-3xl font-bold">{activeCustomers.length}</p>
+        </div>
+      </div>
 
       <DataTable
         data={customersWithStats}
