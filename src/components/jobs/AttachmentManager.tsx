@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Camera,
   FileText,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Attachment } from "@/types";
-import { fileToDataUrl, maybeCompressImage } from "@/lib/fileProcessing";
+import { maybeCompressImage, saveAttachmentFile, getAttachmentUrl, deleteAttachmentFile } from "@/lib/fileProcessing";
 import {
   Dialog,
   DialogContent,
@@ -45,7 +45,20 @@ export function AttachmentManager({
   const [selectedType, setSelectedType] = useState<Attachment["type"]>("photo-before");
   const [isUploading, setIsUploading] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load attachment URLs (handles both base64 and Tauri file paths)
+  useEffect(() => {
+    const loadUrls = async () => {
+      const urls: Record<string, string> = {};
+      for (const attachment of attachments) {
+        urls[attachment.id] = await getAttachmentUrl(attachment);
+      }
+      setAttachmentUrls(urls);
+    };
+    loadUrls();
+  }, [attachments]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -87,14 +100,15 @@ export function AttachmentManager({
       // Process all files
       for (const file of validFiles) {
         const processedFile = await maybeCompressImage(file);
-        const base64Data = await fileToDataUrl(processedFile);
+        const { data, filePath } = await saveAttachmentFile(processedFile, jobId);
 
         const newAttachment = await addAttachment({
           jobId,
           type: selectedType,
           name: processedFile.name,
           mimeType: processedFile.type,
-          data: base64Data,
+          data,
+          filePath,
         });
 
         newAttachments.push(newAttachment);
@@ -112,9 +126,11 @@ export function AttachmentManager({
     }
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteAttachment(id);
-    setAttachments(attachments.filter((a) => a.id !== id));
+  const handleDelete = async (attachment: Attachment) => {
+    // Delete file from filesystem if using Tauri
+    await deleteAttachmentFile(attachment.filePath);
+    await deleteAttachment(attachment.id);
+    setAttachments(attachments.filter((a) => a.id !== attachment.id));
   };
 
   const getAttachmentsByType = (type: Attachment["type"]) => {
@@ -216,7 +232,7 @@ export function AttachmentManager({
                       >
                         {isImage(attachment.mimeType) ? (
                           <img
-                            src={attachment.data}
+                            src={attachmentUrls[attachment.id] || ""}
                             alt={attachment.name}
                             className="w-full h-24 object-cover cursor-pointer"
                             onClick={() => setPreviewAttachment(attachment)}
@@ -226,10 +242,13 @@ export function AttachmentManager({
                             className="w-full h-24 flex flex-col items-center justify-center cursor-pointer"
                             onClick={() => {
                               // Open PDF/doc in new tab
-                              const link = document.createElement("a");
-                              link.href = attachment.data;
-                              link.download = attachment.name;
-                              link.click();
+                              const url = attachmentUrls[attachment.id];
+                              if (url) {
+                                const link = document.createElement("a");
+                                link.href = url;
+                                link.download = attachment.name;
+                                link.click();
+                              }
                             }}
                           >
                             <FileText className="w-8 h-8 text-muted-foreground" />
@@ -251,7 +270,7 @@ export function AttachmentManager({
                             </button>
                           )}
                           <button
-                            onClick={() => handleDelete(attachment.id)}
+                            onClick={() => handleDelete(attachment)}
                             className="p-2 bg-destructive/80 rounded-full hover:bg-destructive"
                             title="Delete"
                           >
@@ -299,7 +318,7 @@ export function AttachmentManager({
                 <X className="w-5 h-5 text-white" />
               </button>
               <img
-                src={previewAttachment.data}
+                src={attachmentUrls[previewAttachment.id] || ""}
                 alt={previewAttachment.name}
                 className="w-full max-h-[80vh] object-contain"
               />
