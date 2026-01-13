@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Part } from '@/types';
+import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Part, Payment, Reminder, Attachment } from '@/types';
 import { getDB, initializeSettings } from '@/lib/db';
 
 interface AppState {
@@ -9,6 +9,9 @@ interface AppState {
   jobs: Job[];
   invoices: Invoice[];
   expenses: Expense[];
+  payments: Payment[];
+  reminders: Reminder[];
+  attachments: Attachment[];
   settings: AppSettings | null;
   auditLogs: AuditLog[];
   isLoading: boolean;
@@ -31,6 +34,24 @@ interface AppState {
   // Invoice actions
   updateInvoice: (id: string, updates: Partial<Invoice>) => Promise<void>;
   recordPayment: (id: string, amountCents: number, method: string, notes?: string) => Promise<void>;
+  recordRefund: (invoiceId: string, amountCents: number, method: string, notes?: string) => Promise<void>;
+
+  // Payment actions
+  getPaymentsByInvoice: (invoiceId: string) => Payment[];
+
+  // Reminder actions
+  addReminder: (reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt' | 'completed'>) => Promise<Reminder>;
+  updateReminder: (id: string, updates: Partial<Reminder>) => Promise<void>;
+  completeReminder: (id: string) => Promise<void>;
+  deleteReminder: (id: string) => Promise<void>;
+  getRemindersByJob: (jobId: string) => Reminder[];
+  getRemindersByCustomer: (customerId: string) => Reminder[];
+  getUpcomingReminders: (days?: number) => Reminder[];
+
+  // Attachment actions
+  addAttachment: (attachment: Omit<Attachment, 'id' | 'createdAt'>) => Promise<Attachment>;
+  deleteAttachment: (id: string) => Promise<void>;
+  getAttachmentsByJob: (jobId: string) => Attachment[];
 
   // Expense actions
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Expense>;
@@ -57,6 +78,9 @@ export const useStore = create<AppState>((set, get) => ({
   jobs: [],
   invoices: [],
   expenses: [],
+  payments: [],
+  reminders: [],
+  attachments: [],
   settings: null,
   auditLogs: [],
   isLoading: true,
@@ -65,11 +89,14 @@ export const useStore = create<AppState>((set, get) => ({
     const db = await getDB();
     const settings = await initializeSettings();
 
-    const [customers, jobs, invoices, expenses, auditLogs] = await Promise.all([
+    const [customers, jobs, invoices, expenses, payments, reminders, attachments, auditLogs] = await Promise.all([
       db.getAll('customers'),
       db.getAll('jobs'),
       db.getAll('invoices'),
       db.getAll('expenses'),
+      db.getAll('payments'),
+      db.getAll('reminders'),
+      db.getAll('attachments'),
       db.getAll('auditLog'),
     ]);
 
@@ -78,6 +105,9 @@ export const useStore = create<AppState>((set, get) => ({
       jobs,
       invoices,
       expenses,
+      payments,
+      reminders,
+      attachments,
       settings,
       auditLogs,
       isLoading: false,
@@ -235,6 +265,17 @@ export const useStore = create<AppState>((set, get) => ({
       throw new Error('Cannot delete invoiced or paid jobs');
     }
 
+    // Delete associated reminders and attachments
+    const jobReminders = get().reminders.filter((r) => r.jobId === id);
+    const jobAttachments = get().attachments.filter((a) => a.jobId === id);
+    
+    for (const reminder of jobReminders) {
+      await db.delete('reminders', reminder.id);
+    }
+    for (const attachment of jobAttachments) {
+      await db.delete('attachments', attachment.id);
+    }
+
     await db.delete('jobs', id);
 
     const auditLog: AuditLog = {
@@ -249,6 +290,8 @@ export const useStore = create<AppState>((set, get) => ({
 
     set((state) => ({
       jobs: state.jobs.filter((j) => j.id !== id),
+      reminders: state.reminders.filter((r) => r.jobId !== id),
+      attachments: state.attachments.filter((a) => a.jobId !== id),
       auditLogs: [...state.auditLogs, auditLog],
     }));
   },
@@ -292,6 +335,7 @@ export const useStore = create<AppState>((set, get) => ({
       totalCents,
       paidAmountCents: 0,
       paymentStatus: 'unpaid',
+      payments: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -361,11 +405,28 @@ export const useStore = create<AppState>((set, get) => ({
     const invoice = state.invoices.find((i) => i.id === id);
     if (!invoice) return;
 
-    const newPaidAmount = invoice.paidAmountCents + amountCents;
     const now = new Date().toISOString();
 
+    // Create payment record
+    const payment: Payment = {
+      id: uuidv4(),
+      invoiceId: id,
+      amountCents,
+      type: 'payment',
+      method,
+      notes,
+      date: now,
+      createdAt: now,
+    };
+
+    await db.put('payments', payment);
+
+    const newPaidAmount = invoice.paidAmountCents + amountCents;
+
     let paymentStatus: Invoice['paymentStatus'] = 'partial';
-    if (newPaidAmount >= invoice.totalCents) {
+    if (newPaidAmount > invoice.totalCents) {
+      paymentStatus = 'overpaid';
+    } else if (newPaidAmount >= invoice.totalCents) {
       paymentStatus = 'paid';
     } else if (newPaidAmount === 0) {
       paymentStatus = 'unpaid';
@@ -378,13 +439,14 @@ export const useStore = create<AppState>((set, get) => ({
       paymentMethod: method,
       paymentDate: now,
       paymentNotes: notes || invoice.paymentNotes,
+      payments: [...(invoice.payments || []), payment],
       updatedAt: now,
     };
 
     await db.put('invoices', updatedInvoice);
 
     // If fully paid, update job status
-    if (paymentStatus === 'paid') {
+    if (paymentStatus === 'paid' || paymentStatus === 'overpaid') {
       const job = state.jobs.find((j) => j.id === invoice.jobId);
       if (job) {
         const updatedJob = { ...job, status: 'paid' as const, updatedAt: now };
@@ -397,8 +459,8 @@ export const useStore = create<AppState>((set, get) => ({
 
     const auditLog: AuditLog = {
       id: uuidv4(),
-      entityType: 'invoice',
-      entityId: id,
+      entityType: 'payment',
+      entityId: payment.id,
       action: 'paid',
       details: `Payment of $${(amountCents / 100).toFixed(2)} recorded`,
       timestamp: now,
@@ -406,9 +468,189 @@ export const useStore = create<AppState>((set, get) => ({
     await db.put('auditLog', auditLog);
 
     set((state) => ({
+      payments: [...state.payments, payment],
       invoices: state.invoices.map((i) => (i.id === id ? updatedInvoice : i)),
       auditLogs: [...state.auditLogs, auditLog],
     }));
+  },
+
+  recordRefund: async (invoiceId, amountCents, method, notes) => {
+    const db = await getDB();
+    const state = get();
+    const invoice = state.invoices.find((i) => i.id === invoiceId);
+    if (!invoice) return;
+
+    const now = new Date().toISOString();
+
+    // Create refund record (negative payment)
+    const payment: Payment = {
+      id: uuidv4(),
+      invoiceId,
+      amountCents,
+      type: 'refund',
+      method,
+      notes,
+      date: now,
+      createdAt: now,
+    };
+
+    await db.put('payments', payment);
+
+    const newPaidAmount = invoice.paidAmountCents - amountCents;
+
+    let paymentStatus: Invoice['paymentStatus'] = 'partial';
+    if (newPaidAmount <= 0) {
+      paymentStatus = 'unpaid';
+    } else if (newPaidAmount >= invoice.totalCents) {
+      paymentStatus = 'paid';
+    }
+
+    const updatedInvoice: Invoice = {
+      ...invoice,
+      paidAmountCents: Math.max(0, newPaidAmount),
+      paymentStatus,
+      payments: [...(invoice.payments || []), payment],
+      updatedAt: now,
+    };
+
+    await db.put('invoices', updatedInvoice);
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'payment',
+      entityId: payment.id,
+      action: 'refunded',
+      details: `Refund of $${(amountCents / 100).toFixed(2)} recorded`,
+      timestamp: now,
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      payments: [...state.payments, payment],
+      invoices: state.invoices.map((i) => (i.id === invoiceId ? updatedInvoice : i)),
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+  },
+
+  getPaymentsByInvoice: (invoiceId) => {
+    return get().payments.filter((p) => p.invoiceId === invoiceId);
+  },
+
+  // Reminder actions
+  addReminder: async (reminderData) => {
+    const db = await getDB();
+    const now = new Date().toISOString();
+    const reminder: Reminder = {
+      ...reminderData,
+      id: uuidv4(),
+      completed: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.put('reminders', reminder);
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'reminder',
+      entityId: reminder.id,
+      action: 'created',
+      details: `Reminder "${reminder.title}" created`,
+      timestamp: now,
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      reminders: [...state.reminders, reminder],
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+
+    return reminder;
+  },
+
+  updateReminder: async (id, updates) => {
+    const db = await getDB();
+    const reminder = get().reminders.find((r) => r.id === id);
+    if (!reminder) return;
+
+    const updatedReminder = {
+      ...reminder,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.put('reminders', updatedReminder);
+
+    set((state) => ({
+      reminders: state.reminders.map((r) => (r.id === id ? updatedReminder : r)),
+    }));
+  },
+
+  completeReminder: async (id) => {
+    const now = new Date().toISOString();
+    await get().updateReminder(id, { completed: true, completedAt: now });
+  },
+
+  deleteReminder: async (id) => {
+    const db = await getDB();
+    await db.delete('reminders', id);
+
+    set((state) => ({
+      reminders: state.reminders.filter((r) => r.id !== id),
+    }));
+  },
+
+  getRemindersByJob: (jobId) => {
+    return get().reminders.filter((r) => r.jobId === jobId);
+  },
+
+  getRemindersByCustomer: (customerId) => {
+    return get().reminders.filter((r) => r.customerId === customerId);
+  },
+
+  getUpcomingReminders: (days = 30) => {
+    const now = new Date();
+    const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    
+    return get().reminders
+      .filter((r) => {
+        if (r.completed) return false;
+        const dueDate = new Date(r.dueDate);
+        return dueDate >= now && dueDate <= futureDate;
+      })
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  },
+
+  // Attachment actions
+  addAttachment: async (attachmentData) => {
+    const db = await getDB();
+    const now = new Date().toISOString();
+    const attachment: Attachment = {
+      ...attachmentData,
+      id: uuidv4(),
+      createdAt: now,
+    };
+
+    await db.put('attachments', attachment);
+
+    set((state) => ({
+      attachments: [...state.attachments, attachment],
+    }));
+
+    return attachment;
+  },
+
+  deleteAttachment: async (id) => {
+    const db = await getDB();
+    await db.delete('attachments', id);
+
+    set((state) => ({
+      attachments: state.attachments.filter((a) => a.id !== id),
+    }));
+  },
+
+  getAttachmentsByJob: (jobId) => {
+    return get().attachments.filter((a) => a.jobId === jobId);
   },
 
   addExpense: async (expenseData) => {
@@ -495,12 +737,15 @@ export const useStore = create<AppState>((set, get) => ({
   exportData: async () => {
     const state = get();
     const exportData = {
-      version: 1,
+      version: 2,
       exportDate: new Date().toISOString(),
       customers: state.customers,
       jobs: state.jobs,
       invoices: state.invoices,
       expenses: state.expenses,
+      payments: state.payments,
+      reminders: state.reminders,
+      attachments: state.attachments,
       settings: state.settings,
     };
     return JSON.stringify(exportData, null, 2);
@@ -516,20 +761,32 @@ export const useStore = create<AppState>((set, get) => ({
       db.clear('jobs'),
       db.clear('invoices'),
       db.clear('expenses'),
+      db.clear('payments'),
+      db.clear('reminders'),
+      db.clear('attachments'),
     ]);
 
     // Import new data
-    for (const customer of data.customers) {
+    for (const customer of data.customers || []) {
       await db.put('customers', customer);
     }
-    for (const job of data.jobs) {
+    for (const job of data.jobs || []) {
       await db.put('jobs', job);
     }
-    for (const invoice of data.invoices) {
+    for (const invoice of data.invoices || []) {
       await db.put('invoices', invoice);
     }
-    for (const expense of data.expenses) {
+    for (const expense of data.expenses || []) {
       await db.put('expenses', expense);
+    }
+    for (const payment of data.payments || []) {
+      await db.put('payments', payment);
+    }
+    for (const reminder of data.reminders || []) {
+      await db.put('reminders', reminder);
+    }
+    for (const attachment of data.attachments || []) {
+      await db.put('attachments', attachment);
     }
     if (data.settings) {
       await db.put('settings', { ...data.settings, id: 'default' });

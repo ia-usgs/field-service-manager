@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Customer, Job, Invoice, Expense, AppSettings, AuditLog } from '@/types';
+import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Payment, Reminder, Attachment } from '@/types';
 
 interface ServiceManagerDB extends DBSchema {
   customers: {
@@ -22,6 +22,21 @@ interface ServiceManagerDB extends DBSchema {
     value: Expense;
     indexes: { 'by-date': string; 'by-category': string };
   };
+  payments: {
+    key: string;
+    value: Payment;
+    indexes: { 'by-invoice': string; 'by-date': string };
+  };
+  reminders: {
+    key: string;
+    value: Reminder;
+    indexes: { 'by-job': string; 'by-customer': string; 'by-due-date': string; 'by-completed': number };
+  };
+  attachments: {
+    key: string;
+    value: Attachment;
+    indexes: { 'by-job': string };
+  };
   settings: {
     key: string;
     value: AppSettings;
@@ -34,7 +49,7 @@ interface ServiceManagerDB extends DBSchema {
 }
 
 const DB_NAME = 'service-manager-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance: IDBPDatabase<ServiceManagerDB> | null = null;
 
@@ -42,7 +57,7 @@ export async function getDB(): Promise<IDBPDatabase<ServiceManagerDB>> {
   if (dbInstance) return dbInstance;
 
   dbInstance = await openDB<ServiceManagerDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion) {
       // Customers store
       if (!db.objectStoreNames.contains('customers')) {
         const customerStore = db.createObjectStore('customers', { keyPath: 'id' });
@@ -71,6 +86,28 @@ export async function getDB(): Promise<IDBPDatabase<ServiceManagerDB>> {
         const expenseStore = db.createObjectStore('expenses', { keyPath: 'id' });
         expenseStore.createIndex('by-date', 'date');
         expenseStore.createIndex('by-category', 'category');
+      }
+
+      // Payments store (new in v2)
+      if (!db.objectStoreNames.contains('payments')) {
+        const paymentStore = db.createObjectStore('payments', { keyPath: 'id' });
+        paymentStore.createIndex('by-invoice', 'invoiceId');
+        paymentStore.createIndex('by-date', 'date');
+      }
+
+      // Reminders store (new in v2)
+      if (!db.objectStoreNames.contains('reminders')) {
+        const reminderStore = db.createObjectStore('reminders', { keyPath: 'id' });
+        reminderStore.createIndex('by-job', 'jobId');
+        reminderStore.createIndex('by-customer', 'customerId');
+        reminderStore.createIndex('by-due-date', 'dueDate');
+        reminderStore.createIndex('by-completed', 'completed');
+      }
+
+      // Attachments store (new in v2)
+      if (!db.objectStoreNames.contains('attachments')) {
+        const attachmentStore = db.createObjectStore('attachments', { keyPath: 'id' });
+        attachmentStore.createIndex('by-job', 'jobId');
       }
 
       // Settings store
