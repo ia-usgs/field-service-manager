@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Attachment } from "@/types";
+import { fileToDataUrl, maybeCompressImage } from "@/lib/fileProcessing";
 import {
   Dialog,
   DialogContent,
@@ -85,18 +86,14 @@ export function AttachmentManager({
 
       // Process all files
       for (const file of validFiles) {
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+        const processedFile = await maybeCompressImage(file);
+        const base64Data = await fileToDataUrl(processedFile);
 
         const newAttachment = await addAttachment({
           jobId,
           type: selectedType,
-          name: file.name,
-          mimeType: file.type,
+          name: processedFile.name,
+          mimeType: processedFile.type,
           data: base64Data,
         });
 
