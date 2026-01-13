@@ -60,14 +60,12 @@ export function AttachmentManager({
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
 
-    // Validate all files first
+    // Validate file types only (no size limit)
     const validFiles: File[] = [];
     const errors: string[] = [];
 
     Array.from(files).forEach((file) => {
-      if (file.size > 5 * 1024 * 1024) {
-        errors.push(`${file.name}: File size must be less than 5MB`);
-      } else if (!allowedTypes.includes(file.type)) {
+      if (!allowedTypes.includes(file.type)) {
         errors.push(`${file.name}: Unsupported file type`);
       } else {
         validFiles.push(file);
@@ -195,7 +193,7 @@ export function AttachmentManager({
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Supported: Images (JPEG, PNG, GIF, WebP), PDF, Word documents. Max 5MB per file. You can select multiple files at once.
+              Supported: Images (JPEG, PNG, GIF, WebP), PDF, Word documents. You can select multiple files at once.
             </p>
           </div>
 
