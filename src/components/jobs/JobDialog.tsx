@@ -60,7 +60,8 @@ const defaultReminders = [
 ];
 
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings, addReminder } = useStore();
+  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob } = useStore();
+  const existingReminders = job ? getRemindersByJob(job.id) : [];
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
@@ -424,84 +425,136 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
             </div>
           </div>
 
-          {/* Service Reminders - Only show for new jobs */}
-          {!job && (
-            <div className="border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Bell className="w-4 h-4 text-primary" />
-                <label className="text-sm font-medium">Schedule Service Reminders</label>
-              </div>
-              <div className="space-y-3">
-                {reminderFields.map((field, index) => {
-                  const watchedReminder = watch(`reminders.${index}`);
-                  return (
-                    <div
-                      key={field.id}
-                      className={`p-3 rounded-lg border transition-colors ${
-                        watchedReminder?.enabled
-                          ? "bg-primary/10 border-primary/30"
-                          : "bg-secondary/30 border-border"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          {...register(`reminders.${index}.enabled`)}
-                          className="w-4 h-4 rounded border-border"
-                        />
-                        <div className="flex-1">
-                          <input
-                            {...register(`reminders.${index}.title`)}
-                            className="input-field w-full text-sm"
-                            placeholder="Reminder title"
-                          />
-                        </div>
+          {/* Service Reminders */}
+          <div className="border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Bell className="w-4 h-4 text-primary" />
+              <label className="text-sm font-medium">
+                {job ? "Existing Reminders" : "Schedule Service Reminders"}
+              </label>
+            </div>
+
+            {/* Show existing reminders for editing */}
+            {job && existingReminders.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {existingReminders.map((reminder) => (
+                  <div
+                    key={reminder.id}
+                    className={`p-3 rounded-lg border ${
+                      reminder.completed
+                        ? "bg-success/10 border-success/20"
+                        : "bg-secondary/50 border-border"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          reminder.type === "follow-up"
+                            ? "bg-primary/20 text-primary"
+                            : reminder.type === "maintenance"
+                            ? "bg-warning/20 text-warning"
+                            : "bg-success/20 text-success"
+                        }`}>
+                          {reminder.type.replace("-", " ")}
+                        </span>
+                        <p className="font-medium text-sm mt-1">{reminder.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Due: {new Date(reminder.dueDate).toLocaleDateString()}
+                        </p>
                       </div>
-                      {watchedReminder?.enabled && (
-                        <div className="mt-3 ml-7 flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Due in:</span>
-                          <select
-                            value={watchedReminder.daysFromNow || "custom"}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === "custom") {
-                                updateReminder(index, { ...watchedReminder, daysFromNow: undefined });
-                              } else {
-                                updateReminder(index, {
-                                  ...watchedReminder,
-                                  daysFromNow: parseInt(value),
-                                  customDate: undefined,
-                                });
-                              }
-                            }}
-                            className="input-field text-sm py-1"
-                          >
-                            <option value={30}>30 days</option>
-                            <option value={60}>60 days</option>
-                            <option value={90}>90 days</option>
-                            <option value={180}>6 months</option>
-                            <option value={365}>1 year</option>
-                            <option value="custom">Custom date</option>
-                          </select>
-                          {!watchedReminder.daysFromNow && (
-                            <input
-                              type="date"
-                              {...register(`reminders.${index}.customDate`)}
-                              min={new Date().toISOString().split("T")[0]}
-                              className="input-field text-sm py-1"
-                            />
-                          )}
-                        </div>
+                      {reminder.completed && (
+                        <span className="text-xs text-success">✓ Completed</span>
                       )}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  To add or edit reminders, use the Reminders button on the Job Detail page.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Reminders will appear on your dashboard when due
+            )}
+
+            {job && existingReminders.length === 0 && (
+              <p className="text-sm text-muted-foreground mb-3">
+                No reminders set. Use the Reminders button on the Job Detail page to add some.
               </p>
-            </div>
-          )}
+            )}
+
+            {/* Show reminder presets for new jobs */}
+            {!job && (
+              <>
+                <div className="space-y-3">
+                  {reminderFields.map((field, index) => {
+                    const watchedReminder = watch(`reminders.${index}`);
+                    return (
+                      <div
+                        key={field.id}
+                        className={`p-3 rounded-lg border transition-colors ${
+                          watchedReminder?.enabled
+                            ? "bg-primary/10 border-primary/30"
+                            : "bg-secondary/30 border-border"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            {...register(`reminders.${index}.enabled`)}
+                            className="w-4 h-4 rounded border-border"
+                          />
+                          <div className="flex-1">
+                            <input
+                              {...register(`reminders.${index}.title`)}
+                              className="input-field w-full text-sm"
+                              placeholder="Reminder title"
+                            />
+                          </div>
+                        </div>
+                        {watchedReminder?.enabled && (
+                          <div className="mt-3 ml-7 flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Due in:</span>
+                            <select
+                              value={watchedReminder.daysFromNow || "custom"}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                if (value === "custom") {
+                                  updateReminder(index, { ...watchedReminder, daysFromNow: undefined });
+                                } else {
+                                  updateReminder(index, {
+                                    ...watchedReminder,
+                                    daysFromNow: parseInt(value),
+                                    customDate: undefined,
+                                  });
+                                }
+                              }}
+                              className="input-field text-sm py-1"
+                            >
+                              <option value={30}>30 days</option>
+                              <option value={60}>60 days</option>
+                              <option value={90}>90 days</option>
+                              <option value={180}>6 months</option>
+                              <option value={365}>1 year</option>
+                              <option value="custom">Custom date</option>
+                            </select>
+                            {!watchedReminder.daysFromNow && (
+                              <input
+                                type="date"
+                                {...register(`reminders.${index}.customDate`)}
+                                min={new Date().toISOString().split("T")[0]}
+                                className="input-field text-sm py-1"
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Reminders will appear on your dashboard when due
+                </p>
+              </>
+            )}
+          </div>
 
           {/* Technician Notes */}
           <div>
