@@ -15,6 +15,7 @@ import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <UpdatePrompt />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />
