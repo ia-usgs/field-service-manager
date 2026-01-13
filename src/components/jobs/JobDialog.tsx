@@ -6,6 +6,7 @@ import { Plus, Trash2, Bell, Check, Edit2, X, Camera, Upload, FileText } from "l
 import { useStore } from "@/store/useStore";
 import { Job, Part, Reminder, Attachment } from "@/types";
 import { dollarsToCents } from "@/lib/db";
+import { fileToDataUrl, maybeCompressImage } from "@/lib/fileProcessing";
 import {
   Dialog,
   DialogContent,
@@ -237,19 +238,15 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
 
         // Save pending attachments for new jobs
         for (const pending of pendingAttachments) {
-          const reader = new FileReader();
-          await new Promise<void>((resolve) => {
-            reader.onloadend = async () => {
-              await addAttachment({
-                jobId: targetJobId,
-                type: pending.type,
-                name: pending.file.name,
-                mimeType: pending.file.type,
-                data: reader.result as string,
-              });
-              resolve();
-            };
-            reader.readAsDataURL(pending.file);
+          const processedFile = await maybeCompressImage(pending.file);
+          const dataUrl = await fileToDataUrl(processedFile);
+
+          await addAttachment({
+            jobId: targetJobId,
+            type: pending.type,
+            name: processedFile.name,
+            mimeType: processedFile.type,
+            data: dataUrl,
           });
         }
         
@@ -866,18 +863,14 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                       // For existing jobs, save immediately
                       (async () => {
                         for (const file of selectedFiles) {
-                          const dataUrl = await new Promise<string>((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result as string);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(file);
-                          });
+                          const processedFile = await maybeCompressImage(file);
+                          const dataUrl = await fileToDataUrl(processedFile);
 
                           const newAttachment = await addAttachment({
                             jobId: job.id,
                             type: selectedAttachmentType,
-                            name: file.name,
-                            mimeType: file.type,
+                            name: processedFile.name,
+                            mimeType: processedFile.type,
                             data: dataUrl,
                           });
 
