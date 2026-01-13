@@ -855,33 +855,44 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 5 * 1024 * 1024) {
-                        alert("File size must be less than 5MB");
-                        return;
-                      }
-                      if (job) {
-                        // For existing jobs, save immediately
-                        const reader = new FileReader();
-                        reader.onloadend = async () => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+
+                    const selectedFiles = Array.from(files);
+
+                    if (job) {
+                      // For existing jobs, save immediately
+                      (async () => {
+                        for (const file of selectedFiles) {
+                          const dataUrl = await new Promise<string>((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result as string);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(file);
+                          });
+
                           const newAttachment = await addAttachment({
                             jobId: job.id,
                             type: selectedAttachmentType,
                             name: file.name,
                             mimeType: file.type,
-                            data: reader.result as string,
+                            data: dataUrl,
                           });
-                          setExistingAttachments([...existingAttachments, newAttachment]);
-                        };
-                        reader.readAsDataURL(file);
-                      } else {
-                        // For new jobs, queue for saving after job creation
-                        setPendingAttachments([...pendingAttachments, { file, type: selectedAttachmentType }]);
-                      }
-                      if (fileInputRef.current) fileInputRef.current.value = "";
+
+                          setExistingAttachments((prev) => [...prev, newAttachment]);
+                        }
+                      })();
+                    } else {
+                      // For new jobs, queue for saving after job creation
+                      setPendingAttachments((prev) => [
+                        ...prev,
+                        ...selectedFiles.map((file) => ({ file, type: selectedAttachmentType })),
+                      ]);
                     }
+
+                    if (fileInputRef.current) fileInputRef.current.value = "";
                   }}
                   accept="image/*,.pdf,.doc,.docx"
                   className="hidden"
