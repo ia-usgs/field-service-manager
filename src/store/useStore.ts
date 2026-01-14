@@ -229,6 +229,23 @@ export const useStore = create<AppState>((set, get) => ({
 
     await db.put('jobs', job);
 
+    // Deduct inventory quantities for parts with inventoryItemId
+    const updatedInventoryItems: InventoryItem[] = [];
+    for (const part of job.parts || []) {
+      if (part.inventoryItemId && part.source === 'inventory') {
+        const inventoryItem = get().inventoryItems.find(i => i.id === part.inventoryItemId);
+        if (inventoryItem) {
+          const updatedItem = {
+            ...inventoryItem,
+            quantity: Math.max(0, inventoryItem.quantity - part.quantity),
+            updatedAt: now,
+          };
+          await db.put('inventoryItems', updatedItem);
+          updatedInventoryItems.push(updatedItem);
+        }
+      }
+    }
+
     const auditLog: AuditLog = {
       id: uuidv4(),
       entityType: 'job',
@@ -241,6 +258,10 @@ export const useStore = create<AppState>((set, get) => ({
 
     set((state) => ({
       jobs: [...state.jobs, job],
+      inventoryItems: state.inventoryItems.map(item => {
+        const updated = updatedInventoryItems.find(u => u.id === item.id);
+        return updated || item;
+      }),
       auditLogs: [...state.auditLogs, auditLog],
     }));
 
@@ -252,16 +273,64 @@ export const useStore = create<AppState>((set, get) => ({
     const job = get().jobs.find((j) => j.id === id);
     if (!job) return;
 
+    const now = new Date().toISOString();
     const updatedJob = {
       ...job,
       ...updates,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     };
 
     await db.put('jobs', updatedJob);
 
+    // Handle inventory adjustments when parts change
+    const updatedInventoryItems: InventoryItem[] = [];
+    
+    if (updates.parts) {
+      const oldParts = job.parts || [];
+      const newParts = updates.parts || [];
+      
+      // Calculate quantity changes per inventory item
+      const inventoryChanges: Record<string, number> = {};
+      
+      // Add back quantities from old parts (restore)
+      for (const part of oldParts) {
+        if (part.inventoryItemId && part.source === 'inventory') {
+          inventoryChanges[part.inventoryItemId] = (inventoryChanges[part.inventoryItemId] || 0) + part.quantity;
+        }
+      }
+      
+      // Subtract quantities for new parts (deduct)
+      for (const part of newParts) {
+        if (part.inventoryItemId && part.source === 'inventory') {
+          inventoryChanges[part.inventoryItemId] = (inventoryChanges[part.inventoryItemId] || 0) - part.quantity;
+        }
+      }
+      
+      // Apply changes to inventory
+      for (const [inventoryItemId, quantityChange] of Object.entries(inventoryChanges)) {
+        if (quantityChange !== 0) {
+          const inventoryItem = get().inventoryItems.find(i => i.id === inventoryItemId);
+          if (inventoryItem) {
+            const updatedItem = {
+              ...inventoryItem,
+              quantity: Math.max(0, inventoryItem.quantity + quantityChange),
+              updatedAt: now,
+            };
+            await db.put('inventoryItems', updatedItem);
+            updatedInventoryItems.push(updatedItem);
+          }
+        }
+      }
+    }
+
     set((state) => ({
       jobs: state.jobs.map((j) => (j.id === id ? updatedJob : j)),
+      inventoryItems: updatedInventoryItems.length > 0 
+        ? state.inventoryItems.map(item => {
+            const updated = updatedInventoryItems.find(u => u.id === item.id);
+            return updated || item;
+          })
+        : state.inventoryItems,
     }));
   },
 
@@ -273,6 +342,25 @@ export const useStore = create<AppState>((set, get) => ({
     // Don't allow deletion of invoiced or paid jobs
     if (job.status === 'invoiced' || job.status === 'paid') {
       throw new Error('Cannot delete invoiced or paid jobs');
+    }
+
+    const now = new Date().toISOString();
+
+    // Restore inventory quantities for parts that were used
+    const updatedInventoryItems: InventoryItem[] = [];
+    for (const part of job.parts || []) {
+      if (part.inventoryItemId && part.source === 'inventory') {
+        const inventoryItem = get().inventoryItems.find(i => i.id === part.inventoryItemId);
+        if (inventoryItem) {
+          const updatedItem = {
+            ...inventoryItem,
+            quantity: inventoryItem.quantity + part.quantity,
+            updatedAt: now,
+          };
+          await db.put('inventoryItems', updatedItem);
+          updatedInventoryItems.push(updatedItem);
+        }
+      }
     }
 
     // Delete associated reminders and attachments
@@ -294,7 +382,7 @@ export const useStore = create<AppState>((set, get) => ({
       entityId: id,
       action: 'deleted',
       details: `Job deleted`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     };
     await db.put('auditLog', auditLog);
 
@@ -302,6 +390,12 @@ export const useStore = create<AppState>((set, get) => ({
       jobs: state.jobs.filter((j) => j.id !== id),
       reminders: state.reminders.filter((r) => r.jobId !== id),
       attachments: state.attachments.filter((a) => a.jobId !== id),
+      inventoryItems: updatedInventoryItems.length > 0 
+        ? state.inventoryItems.map(item => {
+            const updated = updatedInventoryItems.find(u => u.id === item.id);
+            return updated || item;
+          })
+        : state.inventoryItems,
       auditLogs: [...state.auditLogs, auditLog],
     }));
   },
