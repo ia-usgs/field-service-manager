@@ -276,8 +276,12 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
     }
   };
 
-  const activeCustomers = customers.filter((c) => !c.archived);
-  const isLocked = job && (job.status === "invoiced" || job.status === "paid");
+  const activeCustomers = customers
+    .filter((c) => !c.archived)
+    .sort((a, b) => a.name.localeCompare(b.name)); // Sort A-Z
+  
+  // Allow editing even for invoiced/paid jobs (for corrections)
+  const isViewOnly = false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

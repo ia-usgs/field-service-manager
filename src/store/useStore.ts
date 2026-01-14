@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Part, Payment, Reminder, Attachment } from '@/types';
+import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Part, Payment, Reminder, Attachment, InventoryItem } from '@/types';
 import { getDB, initializeSettings } from '@/lib/db';
 
 interface AppState {
@@ -12,6 +12,7 @@ interface AppState {
   payments: Payment[];
   reminders: Reminder[];
   attachments: Attachment[];
+  inventoryItems: InventoryItem[];
   settings: AppSettings | null;
   auditLogs: AuditLog[];
   isLoading: boolean;
@@ -33,6 +34,7 @@ interface AppState {
 
   // Invoice actions
   updateInvoice: (id: string, updates: Partial<Invoice>) => Promise<void>;
+  recalculateInvoice: (id: string) => Promise<void>;
   recordPayment: (id: string, amountCents: number, method: string, notes?: string) => Promise<void>;
   recordRefund: (invoiceId: string, amountCents: number, method: string, notes?: string) => Promise<void>;
 
@@ -52,6 +54,11 @@ interface AppState {
   addAttachment: (attachment: Omit<Attachment, 'id' | 'createdAt'>) => Promise<Attachment>;
   deleteAttachment: (id: string) => Promise<void>;
   getAttachmentsByJob: (jobId: string) => Attachment[];
+
+  // Inventory actions
+  addInventoryItem: (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<InventoryItem>;
+  updateInventoryItem: (id: string, updates: Partial<InventoryItem>) => Promise<void>;
+  deleteInventoryItem: (id: string) => Promise<void>;
 
   // Expense actions
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Expense>;
@@ -81,6 +88,7 @@ export const useStore = create<AppState>((set, get) => ({
   payments: [],
   reminders: [],
   attachments: [],
+  inventoryItems: [],
   settings: null,
   auditLogs: [],
   isLoading: true,
@@ -89,7 +97,7 @@ export const useStore = create<AppState>((set, get) => ({
     const db = await getDB();
     const settings = await initializeSettings();
 
-    const [customers, jobs, invoices, expenses, payments, reminders, attachments, auditLogs] = await Promise.all([
+    const [customers, jobs, invoices, expenses, payments, reminders, attachments, inventoryItems, auditLogs] = await Promise.all([
       db.getAll('customers'),
       db.getAll('jobs'),
       db.getAll('invoices'),
@@ -97,6 +105,7 @@ export const useStore = create<AppState>((set, get) => ({
       db.getAll('payments'),
       db.getAll('reminders'),
       db.getAll('attachments'),
+      db.getAll('inventoryItems'),
       db.getAll('auditLog'),
     ]);
 
@@ -108,6 +117,7 @@ export const useStore = create<AppState>((set, get) => ({
       payments,
       reminders,
       attachments,
+      inventoryItems,
       settings,
       auditLogs,
       isLoading: false,
@@ -416,6 +426,96 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
 
+  recalculateInvoice: async (id) => {
+    const db = await getDB();
+    const state = get();
+    const invoice = state.invoices.find((i) => i.id === id);
+    const job = invoice ? state.jobs.find((j) => j.id === invoice.jobId) : null;
+    
+    if (!invoice || !job) return;
+
+    const now = new Date().toISOString();
+
+    // Recalculate totals from job
+    const laborTotalCents = Math.round(job.laborHours * job.laborRateCents);
+    
+    const inventoryParts = job.parts.filter(p => p.source !== 'customer-provided');
+    const passThroughParts = job.parts.filter(p => p.source === 'customer-provided');
+    
+    const partsTotalCents = inventoryParts.reduce(
+      (sum, part) => sum + part.quantity * part.unitPriceCents,
+      0
+    );
+    const passThroughPartsCents = passThroughParts.reduce(
+      (sum, part) => sum + part.quantity * part.unitPriceCents,
+      0
+    );
+    
+    const subtotalCents = laborTotalCents + partsTotalCents + passThroughPartsCents + job.miscFeesCents;
+    const taxCents = Math.round(subtotalCents * (job.taxRate / 100));
+    const totalCents = subtotalCents + taxCents;
+    
+    const incomeAmountCents = laborTotalCents + partsTotalCents + job.miscFeesCents + 
+      Math.round((laborTotalCents + partsTotalCents + job.miscFeesCents) * (job.taxRate / 100));
+
+    // Update payment status based on new total
+    let paymentStatus: Invoice['paymentStatus'] = 'unpaid';
+    if (invoice.paidAmountCents > totalCents) {
+      paymentStatus = 'overpaid';
+    } else if (invoice.paidAmountCents >= totalCents) {
+      paymentStatus = 'paid';
+    } else if (invoice.paidAmountCents > 0) {
+      paymentStatus = 'partial';
+    }
+
+    const updatedInvoice: Invoice = {
+      ...invoice,
+      laborTotalCents,
+      partsTotalCents,
+      passThroughPartsCents,
+      miscFeesCents: job.miscFeesCents,
+      subtotalCents,
+      taxCents,
+      totalCents,
+      incomeAmountCents,
+      paymentStatus,
+      updatedAt: now,
+    };
+
+    await db.put('invoices', updatedInvoice);
+
+    // Update job status based on payment
+    let newJobStatus = job.status;
+    if (paymentStatus === 'paid' || paymentStatus === 'overpaid') {
+      newJobStatus = 'paid';
+    } else {
+      newJobStatus = 'invoiced';
+    }
+
+    if (newJobStatus !== job.status) {
+      const updatedJob = { ...job, status: newJobStatus, updatedAt: now };
+      await db.put('jobs', updatedJob);
+      set((state) => ({
+        jobs: state.jobs.map((j) => (j.id === job.id ? updatedJob : j)),
+      }));
+    }
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'invoice',
+      entityId: id,
+      action: 'updated',
+      details: `Invoice ${invoice.invoiceNumber} recalculated. New total: $${(totalCents / 100).toFixed(2)}`,
+      timestamp: now,
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      invoices: state.invoices.map((i) => (i.id === id ? updatedInvoice : i)),
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+  },
+
   recordPayment: async (id, amountCents, method, notes) => {
     const db = await getDB();
     const state = get();
@@ -670,6 +770,78 @@ export const useStore = create<AppState>((set, get) => ({
     return get().attachments.filter((a) => a.jobId === jobId);
   },
 
+  // Inventory item actions
+  addInventoryItem: async (itemData) => {
+    const db = await getDB();
+    const now = new Date().toISOString();
+    const item: InventoryItem = {
+      ...itemData,
+      id: uuidv4(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.put('inventoryItems', item);
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'inventory',
+      entityId: item.id,
+      action: 'created',
+      details: `Inventory item "${item.name}" created`,
+      timestamp: now,
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      inventoryItems: [...state.inventoryItems, item],
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+
+    return item;
+  },
+
+  updateInventoryItem: async (id, updates) => {
+    const db = await getDB();
+    const item = get().inventoryItems.find((i) => i.id === id);
+    if (!item) return;
+
+    const updatedItem = {
+      ...item,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.put('inventoryItems', updatedItem);
+
+    set((state) => ({
+      inventoryItems: state.inventoryItems.map((i) => (i.id === id ? updatedItem : i)),
+    }));
+  },
+
+  deleteInventoryItem: async (id) => {
+    const db = await getDB();
+    const item = get().inventoryItems.find((i) => i.id === id);
+    if (!item) return;
+
+    await db.delete('inventoryItems', id);
+
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'inventory',
+      entityId: id,
+      action: 'deleted',
+      details: `Inventory item "${item.name}" deleted`,
+      timestamp: new Date().toISOString(),
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      inventoryItems: state.inventoryItems.filter((i) => i.id !== id),
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+  },
+
   addExpense: async (expenseData) => {
     const db = await getDB();
     const now = new Date().toISOString();
@@ -754,7 +926,7 @@ export const useStore = create<AppState>((set, get) => ({
   exportData: async () => {
     const state = get();
     const exportData = {
-      version: 2,
+      version: 3,
       exportDate: new Date().toISOString(),
       customers: state.customers,
       jobs: state.jobs,
@@ -763,6 +935,7 @@ export const useStore = create<AppState>((set, get) => ({
       payments: state.payments,
       reminders: state.reminders,
       attachments: state.attachments,
+      inventoryItems: state.inventoryItems,
       settings: state.settings,
     };
     return JSON.stringify(exportData, null, 2);
@@ -781,6 +954,7 @@ export const useStore = create<AppState>((set, get) => ({
       db.clear('payments'),
       db.clear('reminders'),
       db.clear('attachments'),
+      db.clear('inventoryItems'),
     ]);
 
     // Import new data
@@ -804,6 +978,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
     for (const attachment of data.attachments || []) {
       await db.put('attachments', attachment);
+    }
+    for (const item of data.inventoryItems || []) {
+      await db.put('inventoryItems', item);
     }
     if (data.settings) {
       await db.put('settings', { ...data.settings, id: 'default' });

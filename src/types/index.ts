@@ -13,6 +13,21 @@ export interface Customer {
   archived: boolean;
 }
 
+// Inventory item for manual parts management
+export interface InventoryItem {
+  id: string;
+  name: string;
+  sku?: string;
+  description?: string;
+  unitCostCents: number; // What we paid
+  unitPriceCents: number; // What we charge
+  quantity: number; // Stock quantity
+  reorderLevel?: number;
+  category?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Part {
   id: string;
   name: string;
@@ -20,6 +35,7 @@ export interface Part {
   unitCostCents: number; // What we paid
   unitPriceCents: number; // What we charge
   source: 'inventory' | 'customer-provided'; // inventory = we mark up & sell; customer-provided = pass-through (not income)
+  inventoryItemId?: string; // Link to InventoryItem if selected from inventory
 }
 
 export interface Reminder {
@@ -134,7 +150,7 @@ export interface AppSettings {
 
 export interface AuditLog {
   id: string;
-  entityType: 'customer' | 'job' | 'invoice' | 'expense' | 'payment' | 'reminder';
+  entityType: 'customer' | 'job' | 'invoice' | 'expense' | 'payment' | 'reminder' | 'inventory';
   entityId: string;
   action: 'created' | 'updated' | 'deleted' | 'paid' | 'refunded';
   details: string;
