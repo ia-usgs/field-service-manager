@@ -180,7 +180,7 @@ export default function Dashboard() {
     let totalRevenue = 0;
 
     completedJobs.forEach((job) => {
-      job.parts.forEach((part) => {
+      (job.parts || []).forEach((part) => {
         // Only count inventory parts (not customer-provided)
         if (part.source !== "customer-provided") {
           totalCost += part.quantity * part.unitCostCents;

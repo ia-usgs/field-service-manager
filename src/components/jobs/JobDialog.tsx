@@ -147,12 +147,13 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         workPerformed: job.workPerformed,
         laborHours: job.laborHours,
         laborRate: job.laborRateCents / 100,
-        parts: job.parts.map((p) => ({
+        parts: (job.parts || []).map((p) => ({
           name: p.name,
           quantity: p.quantity,
           unitCost: p.unitCostCents / 100,
           unitPrice: p.unitPriceCents / 100,
           source: p.source || "inventory",
+          inventoryItemId: p.inventoryItemId,
         })),
         miscFees: job.miscFeesCents / 100,
         miscFeesDescription: job.miscFeesDescription,

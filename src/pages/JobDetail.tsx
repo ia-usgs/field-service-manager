@@ -44,7 +44,7 @@ export default function JobDetail() {
   }
 
   const laborTotal = job.laborHours * job.laborRateCents;
-  const partsTotal = job.parts.reduce(
+  const partsTotal = (job.parts || []).reduce(
     (sum, part) => sum + part.quantity * part.unitPriceCents,
     0
   );
@@ -184,11 +184,11 @@ export default function JobDetail() {
           </div>
 
           {/* Parts */}
-          {job.parts.length > 0 && (
+          {(job.parts || []).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-6">
               <h3 className="font-semibold mb-4">Parts</h3>
               <div className="space-y-2">
-                {job.parts.map((part) => (
+                {(job.parts || []).map((part) => (
                   <div key={part.id} className="flex justify-between items-center">
                     <span className="text-muted-foreground">
                       {part.name} (x{part.quantity})

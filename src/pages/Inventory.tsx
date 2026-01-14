@@ -47,7 +47,7 @@ export default function Inventory() {
     );
 
     completedJobs.forEach((job) => {
-      job.parts.forEach((part) => {
+      (job.parts || []).forEach((part) => {
         // Only count inventory parts for profit (customer-provided are pass-through)
         if (part.source !== "customer-provided") {
           const totalCost = part.quantity * part.unitCostCents;
