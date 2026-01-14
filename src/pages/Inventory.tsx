@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Package, TrendingUp, DollarSign, ShoppingCart } from "lucide-react";
+import { Package, TrendingUp, DollarSign, ShoppingCart, Plus, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -18,10 +18,14 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { centsToDollars } from "@/lib/db";
+import { InventoryItemDialog } from "@/components/inventory/InventoryItemDialog";
+import { InventoryItem } from "@/types";
 
 export default function Inventory() {
-  const { jobs, customers } = useStore();
-  const [viewMode, setViewMode] = useState<"summary" | "details">("summary");
+  const { jobs, customers, inventoryItems, deleteInventoryItem } = useStore();
+  const [viewMode, setViewMode] = useState<"items" | "analytics" | "history">("items");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
 
   // Calculate parts data from all jobs
   const partsAnalysis = useMemo(() => {
@@ -74,6 +78,11 @@ export default function Inventory() {
     const totalQuantity = partsAnalysis.reduce((sum, p) => sum + p.quantity, 0);
     const avgMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100) : 0;
 
+    // Inventory value
+    const inventoryValue = inventoryItems.reduce((sum, item) => sum + (item.unitCostCents * item.quantity), 0);
+    const inventorySellValue = inventoryItems.reduce((sum, item) => sum + (item.unitPriceCents * item.quantity), 0);
+    const lowStockItems = inventoryItems.filter(item => item.reorderLevel && item.quantity <= item.reorderLevel).length;
+
     return {
       totalCost,
       totalRevenue,
@@ -81,8 +90,12 @@ export default function Inventory() {
       totalQuantity,
       avgMargin,
       uniqueParts: new Set(partsAnalysis.map((p) => p.name.toLowerCase())).size,
+      inventoryValue,
+      inventorySellValue,
+      lowStockItems,
+      totalItems: inventoryItems.length,
     };
-  }, [partsAnalysis]);
+  }, [partsAnalysis, inventoryItems]);
 
   // Group by part name for chart
   const partsByName = useMemo(() => {
@@ -139,32 +152,58 @@ export default function Inventory() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [partsAnalysis, customers]);
 
+  const handleEdit = (item: InventoryItem) => {
+    setEditingItem(item);
+    setDialogOpen(true);
+  };
+
+  const handleAdd = () => {
+    setEditingItem(undefined);
+    setDialogOpen(true);
+  };
+
+  const handleDelete = async (item: InventoryItem) => {
+    if (confirm(`Delete "${item.name}" from inventory?`)) {
+      await deleteInventoryItem(item.id);
+    }
+  };
+
   return (
     <AppLayout>
       <PageHeader
         title="Inventory & Parts"
-        description="Track parts costs, revenue, and profit margins"
+        description="Manage your parts inventory and track profit margins"
         actions={
           <div className="flex gap-2">
             <button
-              onClick={() => setViewMode("summary")}
+              onClick={() => setViewMode("items")}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === "summary"
+                viewMode === "items"
                   ? "bg-primary text-primary-foreground"
                   : "bg-secondary text-muted-foreground hover:text-foreground"
               }`}
             >
-              Summary
+              Inventory
             </button>
             <button
-              onClick={() => setViewMode("details")}
+              onClick={() => setViewMode("analytics")}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === "details"
+                viewMode === "analytics"
                   ? "bg-primary text-primary-foreground"
                   : "bg-secondary text-muted-foreground hover:text-foreground"
               }`}
             >
-              Details
+              Analytics
+            </button>
+            <button
+              onClick={() => setViewMode("history")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === "history"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Sales History
             </button>
           </div>
         }
@@ -173,35 +212,129 @@ export default function Inventory() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
-          title="Total Parts Cost"
-          value={`$${centsToDollars(stats.totalCost)}`}
-          subtitle="What you paid"
-          icon={ShoppingCart}
+          title="Inventory Value"
+          value={`$${centsToDollars(stats.inventoryValue)}`}
+          subtitle={`${stats.totalItems} items in stock`}
+          icon={Package}
           variant="default"
         />
         <StatCard
-          title="Parts Revenue"
-          value={`$${centsToDollars(stats.totalRevenue)}`}
-          subtitle="What you charged"
+          title="Potential Revenue"
+          value={`$${centsToDollars(stats.inventorySellValue)}`}
+          subtitle="If all stock sold"
           icon={DollarSign}
           variant="primary"
         />
         <StatCard
-          title="Parts Profit"
+          title="Parts Profit (Sold)"
           value={`$${centsToDollars(stats.totalProfit)}`}
           subtitle={`${stats.avgMargin.toFixed(1)}% avg margin`}
           icon={TrendingUp}
           variant="success"
         />
         <StatCard
-          title="Parts Sold"
-          value={stats.totalQuantity}
-          subtitle={`${stats.uniqueParts} unique items`}
-          icon={Package}
+          title="Low Stock Alert"
+          value={stats.lowStockItems}
+          subtitle={stats.lowStockItems > 0 ? "Items need reorder" : "All items stocked"}
+          icon={AlertTriangle}
+          variant={stats.lowStockItems > 0 ? "warning" : "default"}
         />
       </div>
 
-      {viewMode === "summary" ? (
+      {viewMode === "items" && (
+        <div className="bg-card border border-border rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Inventory Items</h3>
+            <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Add Item
+            </button>
+          </div>
+
+          {inventoryItems.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">SKU</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Category</th>
+                    <th className="text-right py-3 px-4 font-medium text-muted-foreground">Cost</th>
+                    <th className="text-right py-3 px-4 font-medium text-muted-foreground">Price</th>
+                    <th className="text-right py-3 px-4 font-medium text-muted-foreground">Margin</th>
+                    <th className="text-right py-3 px-4 font-medium text-muted-foreground">Stock</th>
+                    <th className="text-right py-3 px-4 font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventoryItems
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((item) => {
+                      const margin = item.unitPriceCents > 0
+                        ? ((item.unitPriceCents - item.unitCostCents) / item.unitPriceCents * 100).toFixed(1)
+                        : "0";
+                      const isLowStock = item.reorderLevel && item.quantity <= item.reorderLevel;
+                      return (
+                        <tr key={item.id} className="border-b border-border/50 hover:bg-secondary/50">
+                          <td className="py-3 px-4 font-medium">{item.name}</td>
+                          <td className="py-3 px-4 text-muted-foreground">{item.sku || "-"}</td>
+                          <td className="py-3 px-4 text-muted-foreground">{item.category || "-"}</td>
+                          <td className="py-3 px-4 text-right">${centsToDollars(item.unitCostCents)}</td>
+                          <td className="py-3 px-4 text-right">${centsToDollars(item.unitPriceCents)}</td>
+                          <td className="py-3 px-4 text-right">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              parseFloat(margin) >= 30
+                                ? "bg-success/20 text-success"
+                                : parseFloat(margin) >= 15
+                                ? "bg-warning/20 text-warning"
+                                : "bg-destructive/20 text-destructive"
+                            }`}>
+                              {margin}%
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <span className={isLowStock ? "text-warning font-medium" : ""}>
+                              {item.quantity}
+                              {isLowStock && <AlertTriangle className="w-3 h-3 inline ml-1" />}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleEdit(item)}
+                                className="p-1.5 hover:bg-secondary rounded"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(item)}
+                                className="p-1.5 hover:bg-destructive/10 text-destructive rounded"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Package className="w-12 h-12 mb-4 opacity-50" />
+              <p className="text-lg font-medium mb-2">No inventory items yet</p>
+              <p className="text-sm mb-4">Add parts and items you sell to track profit margins</p>
+              <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Your First Item
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewMode === "analytics" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Parts by Profit */}
           <div className="bg-card border border-border rounded-lg p-6">
@@ -324,8 +457,9 @@ export default function Inventory() {
             )}
           </div>
         </div>
-      ) : (
-        /* Details View */
+      )}
+
+      {viewMode === "history" && (
         <div className="bg-card border border-border rounded-lg p-6">
           <h3 className="font-semibold mb-4">Parts Sales History</h3>
           {detailedParts.length > 0 ? (
@@ -380,6 +514,12 @@ export default function Inventory() {
           )}
         </div>
       )}
+
+      <InventoryItemDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        item={editingItem}
+      />
     </AppLayout>
   );
 }
