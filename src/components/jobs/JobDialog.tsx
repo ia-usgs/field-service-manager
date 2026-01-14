@@ -62,7 +62,7 @@ const defaultReminders = [
 ];
 
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment } = useStore();
+  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment, inventoryItems } = useStore();
   const [existingReminders, setExistingReminders] = useState<Reminder[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
   const [pendingAttachments, setPendingAttachments] = useState<{ file: File; type: Attachment["type"] }[]>([]);
@@ -74,6 +74,9 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
   const [selectedAttachmentType, setSelectedAttachmentType] = useState<Attachment["type"]>("photo-before");
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sort inventory items alphabetically
+  const sortedInventoryItems = [...inventoryItems].sort((a, b) => a.name.localeCompare(b.name));
 
   // Load existing reminders and attachments when dialog opens
   useEffect(() => {
@@ -384,14 +387,42 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium">Parts</label>
               {!isViewOnly && (
-                <button
-                  type="button"
-                  onClick={() => appendPart({ name: "", quantity: 1, unitCost: 0, unitPrice: 0, source: "inventory" })}
-                  className="text-primary text-sm flex items-center gap-1 hover:underline"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Part
-                </button>
+                <div className="flex items-center gap-2">
+                  {sortedInventoryItems.length > 0 && (
+                    <select
+                      className="input-field text-sm py-1"
+                      onChange={(e) => {
+                        const item = inventoryItems.find(i => i.id === e.target.value);
+                        if (item) {
+                          appendPart({
+                            name: item.name,
+                            quantity: 1,
+                            unitCost: item.unitCostCents / 100,
+                            unitPrice: item.unitPriceCents / 100,
+                            source: "inventory",
+                          });
+                        }
+                        e.target.value = "";
+                      }}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Add from inventory...</option>
+                      {sortedInventoryItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name} (${(item.unitPriceCents / 100).toFixed(2)}) - {item.quantity} in stock
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => appendPart({ name: "", quantity: 1, unitCost: 0, unitPrice: 0, source: "inventory" })}
+                    className="text-primary text-sm flex items-center gap-1 hover:underline"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Custom
+                  </button>
+                </div>
               )}
             </div>
             {partFields.length > 0 && (
