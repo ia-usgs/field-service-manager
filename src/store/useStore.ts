@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Part, Payment, Reminder, Attachment, InventoryItem } from '@/types';
+import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Payment, Reminder, Attachment, InventoryItem } from '@/types';
 import { getDB, initializeSettings } from '@/lib/db';
 
 interface AppState {
@@ -419,8 +419,8 @@ export const useStore = create<AppState>((set, get) => ({
     const laborTotalCents = Math.round(job.laborHours * job.laborRateCents);
     
     // Separate inventory parts (income) from customer-provided parts (pass-through)
-    const inventoryParts = job.parts.filter(p => p.source !== 'customer-provided');
-    const passThroughParts = job.parts.filter(p => p.source === 'customer-provided');
+    const inventoryParts = (job.parts || []).filter(p => p.source !== 'customer-provided');
+    const passThroughParts = (job.parts || []).filter(p => p.source === 'customer-provided');
     
     const partsTotalCents = inventoryParts.reduce(
       (sum, part) => sum + part.quantity * part.unitPriceCents,
@@ -538,8 +538,8 @@ export const useStore = create<AppState>((set, get) => ({
     // Recalculate totals from job
     const laborTotalCents = Math.round(job.laborHours * job.laborRateCents);
     
-    const inventoryParts = job.parts.filter(p => p.source !== 'customer-provided');
-    const passThroughParts = job.parts.filter(p => p.source === 'customer-provided');
+    const inventoryParts = (job.parts || []).filter(p => p.source !== 'customer-provided');
+    const passThroughParts = (job.parts || []).filter(p => p.source === 'customer-provided');
     
     const partsTotalCents = inventoryParts.reduce(
       (sum, part) => sum + part.quantity * part.unitPriceCents,

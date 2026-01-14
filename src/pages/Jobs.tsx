@@ -25,7 +25,7 @@ export default function Jobs() {
     return filteredJobs.map((job) => {
       const customer = customers.find((c) => c.id === job.customerId);
       const laborTotal = job.laborHours * job.laborRateCents;
-      const partsTotal = job.parts.reduce(
+      const partsTotal = (job.parts || []).reduce(
         (sum, part) => sum + part.quantity * part.unitPriceCents,
         0
       );

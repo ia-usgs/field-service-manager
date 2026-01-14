@@ -150,7 +150,7 @@ export default function Reports() {
 
     filteredJobs.filter(j => ["completed", "invoiced", "paid"].includes(j.status)).forEach((job) => {
       laborRevenue += job.laborHours * job.laborRateCents;
-      job.parts.forEach((part) => {
+      (job.parts || []).forEach((part) => {
         if (part.source !== "customer-provided") {
           partsRevenue += part.quantity * part.unitPriceCents;
         }
@@ -171,7 +171,7 @@ export default function Reports() {
     let totalRevenue = 0;
 
     filteredJobs.filter(j => ["completed", "invoiced", "paid"].includes(j.status)).forEach((job) => {
-      job.parts.forEach((part) => {
+      (job.parts || []).forEach((part) => {
         if (part.source !== "customer-provided") {
           totalCost += part.quantity * part.unitCostCents;
           totalRevenue += part.quantity * part.unitPriceCents;
@@ -193,7 +193,7 @@ export default function Reports() {
     if (completedJobs.length === 0) return 0;
     const totalValue = completedJobs.reduce((sum, job) => {
       const laborTotal = job.laborHours * job.laborRateCents;
-      const partsTotal = job.parts.reduce((p, part) => p + (part.quantity * part.unitPriceCents), 0);
+      const partsTotal = (job.parts || []).reduce((p, part) => p + (part.quantity * part.unitPriceCents), 0);
       const subtotal = laborTotal + partsTotal + job.miscFeesCents;
       const tax = Math.round(subtotal * (job.taxRate / 100));
       return sum + subtotal + tax;
