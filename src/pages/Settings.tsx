@@ -21,7 +21,11 @@ const settingsSchema = z.object({
 type SettingsFormData = z.infer<typeof settingsSchema>;
 
 export default function Settings() {
-  const { settings, updateSettings, exportData, importData, addCustomer, addInventoryItem, customers, inventoryItems } = useStore();
+  const { 
+    settings, updateSettings, exportData, importData, 
+    addCustomer, addInventoryItem, addJob, addExpense, addReminder, completeJob, recordPayment,
+    customers, inventoryItems, jobs, expenses 
+  } = useStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -63,9 +67,15 @@ export default function Settings() {
   const handleSeedTestData = async () => {
     setIsSeeding(true);
     try {
+      let customersAdded = 0;
+      let inventoryAdded = 0;
+      let jobsAdded = 0;
+      let expensesAdded = 0;
+
       // Add test customers if none exist
+      let customerIds: string[] = [];
       if (customers.length === 0) {
-        await addCustomer({
+        const c1 = await addCustomer({
           name: "John Smith",
           email: "john.smith@example.com",
           phone: "(555) 123-4567",
@@ -73,7 +83,7 @@ export default function Settings() {
           notes: "Preferred customer. Has annual maintenance contract.",
           tags: ["residential", "priority"],
         });
-        await addCustomer({
+        const c2 = await addCustomer({
           name: "ABC Manufacturing",
           email: "maintenance@abcmfg.com",
           phone: "(555) 987-6543",
@@ -81,7 +91,7 @@ export default function Settings() {
           notes: "Commercial account. Net 30 terms.",
           tags: ["commercial", "net-30"],
         });
-        await addCustomer({
+        const c3 = await addCustomer({
           name: "Sarah Johnson",
           email: "sarah.j@email.com",
           phone: "(555) 456-7890",
@@ -89,11 +99,16 @@ export default function Settings() {
           notes: "New customer referral from John Smith.",
           tags: ["residential"],
         });
+        customerIds = [c1.id, c2.id, c3.id];
+        customersAdded = 3;
+      } else {
+        customerIds = customers.slice(0, 3).map(c => c.id);
       }
 
       // Add test inventory items if none exist
+      let inventoryIds: string[] = [];
       if (inventoryItems.length === 0) {
-        await addInventoryItem({
+        const i1 = await addInventoryItem({
           name: "20A Circuit Breaker",
           sku: "CB-20A-001",
           description: "Standard 20 amp single-pole circuit breaker",
@@ -103,7 +118,7 @@ export default function Settings() {
           reorderLevel: 10,
           category: "Breakers",
         });
-        await addInventoryItem({
+        const i2 = await addInventoryItem({
           name: "GFCI Outlet",
           sku: "GFCI-15A-WH",
           description: "15 amp GFCI outlet, white, tamper-resistant",
@@ -113,7 +128,7 @@ export default function Settings() {
           reorderLevel: 5,
           category: "Outlets",
         });
-        await addInventoryItem({
+        const i3 = await addInventoryItem({
           name: "LED Panel Light 2x4",
           sku: "LED-2X4-40W",
           description: "40W LED flat panel light, 4000K, dimmable",
@@ -123,7 +138,7 @@ export default function Settings() {
           reorderLevel: 3,
           category: "Lighting",
         });
-        await addInventoryItem({
+        const i4 = await addInventoryItem({
           name: "Romex 12/2 Wire (250ft)",
           sku: "ROMEX-12-2-250",
           description: "12 gauge, 2 conductor with ground, NM-B cable",
@@ -133,7 +148,7 @@ export default function Settings() {
           reorderLevel: 2,
           category: "Wire",
         });
-        await addInventoryItem({
+        const i5 = await addInventoryItem({
           name: "Smart Thermostat",
           sku: "THERM-WIFI-PRO",
           description: "WiFi-enabled programmable thermostat",
@@ -143,11 +158,252 @@ export default function Settings() {
           reorderLevel: 2,
           category: "HVAC",
         });
+        inventoryIds = [i1.id, i2.id, i3.id, i4.id, i5.id];
+        inventoryAdded = 5;
+      } else {
+        inventoryIds = inventoryItems.slice(0, 5).map(i => i.id);
       }
 
+      // Add test jobs if none exist
+      if (jobs.length === 0 && customerIds.length > 0) {
+        const today = new Date();
+        const daysAgo = (days: number) => {
+          const d = new Date(today);
+          d.setDate(d.getDate() - days);
+          return d.toISOString().split("T")[0];
+        };
+        const daysFromNow = (days: number) => {
+          const d = new Date(today);
+          d.setDate(d.getDate() + days);
+          return d.toISOString().split("T")[0];
+        };
+
+        // Job 1: Quoted (pending)
+        await addJob({
+          customerId: customerIds[0],
+          dateOfService: daysFromNow(7),
+          problemDescription: "Customer requests quote for whole-house surge protector installation",
+          workPerformed: "",
+          laborHours: 0,
+          laborRateCents: 8500,
+          parts: [],
+          miscFeesCents: 0,
+          miscFeesDescription: "",
+          taxRate: 8.25,
+          status: "quoted",
+          technicianNotes: "Estimate: 2 hours labor + surge protector unit. Will need to check panel capacity.",
+        });
+        jobsAdded++;
+
+        // Job 2: In Progress
+        const job2 = await addJob({
+          customerId: customerIds[1],
+          dateOfService: daysAgo(1),
+          problemDescription: "Replace outdated fluorescent lighting with LED panels in warehouse section B",
+          workPerformed: "Removed 6 old fluorescent fixtures. Installing new LED panels - 4 of 6 complete.",
+          laborHours: 4,
+          laborRateCents: 9500,
+          parts: inventoryIds.length > 2 ? [
+            { id: "p1", name: "LED Panel Light 2x4", quantity: 4, unitCostCents: 4500, unitPriceCents: 8500, source: "inventory" as const, inventoryItemId: inventoryIds[2] },
+          ] : [],
+          miscFeesCents: 2500,
+          miscFeesDescription: "Disposal fee for old fixtures",
+          taxRate: 8.25,
+          status: "in-progress",
+          technicianNotes: "Need to return tomorrow to complete remaining 2 fixtures. Customer approved overtime if needed.",
+        });
+        jobsAdded++;
+
+        // Add reminder for in-progress job
+        await addReminder({
+          jobId: job2.id,
+          customerId: customerIds[1],
+          type: "follow-up",
+          title: "Complete LED installation at ABC Manufacturing",
+          description: "Finish installing remaining 2 LED panels in warehouse section B",
+          dueDate: daysFromNow(1),
+        });
+
+        // Job 3: Completed (will generate invoice)
+        const job3 = await addJob({
+          customerId: customerIds[0],
+          dateOfService: daysAgo(5),
+          problemDescription: "GFCI outlets not working in kitchen - tripping immediately when reset",
+          workPerformed: "Diagnosed faulty GFCI outlet in kitchen. Replaced 2 GFCI outlets and tested all kitchen circuits. Found and repaired loose neutral connection in junction box.",
+          laborHours: 2.5,
+          laborRateCents: 8500,
+          parts: inventoryIds.length > 1 ? [
+            { id: "p1", name: "GFCI Outlet", quantity: 2, unitCostCents: 1200, unitPriceCents: 2500, source: "inventory" as const, inventoryItemId: inventoryIds[1] },
+          ] : [],
+          miscFeesCents: 0,
+          miscFeesDescription: "",
+          taxRate: 8.25,
+          status: "quoted", // Will be completed below
+          technicianNotes: "Recommended whole-house surge protector. Customer interested - scheduled quote visit.",
+        });
+        // Complete this job to generate invoice
+        await completeJob(job3.id);
+        jobsAdded++;
+
+        // Add maintenance reminder
+        await addReminder({
+          jobId: job3.id,
+          customerId: customerIds[0],
+          type: "maintenance",
+          title: "6-month GFCI check for John Smith",
+          description: "Follow-up inspection of GFCI outlets installed in kitchen",
+          dueDate: daysFromNow(180),
+        });
+
+        // Job 4: Invoiced (awaiting payment)
+        const job4 = await addJob({
+          customerId: customerIds[2],
+          dateOfService: daysAgo(10),
+          problemDescription: "Install new 20A circuit for home office equipment",
+          workPerformed: "Installed dedicated 20A circuit from panel to home office. Ran 45ft of 12/2 Romex through attic. Installed new outlet and breaker. Tested and labeled circuit.",
+          laborHours: 3,
+          laborRateCents: 8500,
+          parts: inventoryIds.length > 3 ? [
+            { id: "p1", name: "20A Circuit Breaker", quantity: 1, unitCostCents: 850, unitPriceCents: 1500, source: "inventory" as const, inventoryItemId: inventoryIds[0] },
+            { id: "p2", name: "Romex 12/2 Wire (250ft)", quantity: 1, unitCostCents: 8500, unitPriceCents: 12500, source: "inventory" as const, inventoryItemId: inventoryIds[3] },
+          ] : [],
+          miscFeesCents: 1500,
+          miscFeesDescription: "Permit fee",
+          taxRate: 8.25,
+          status: "quoted",
+          technicianNotes: "Clean installation. Customer very satisfied with cable management.",
+        });
+        await completeJob(job4.id);
+        jobsAdded++;
+
+        // Job 5: Paid (complete cycle)
+        const job5 = await addJob({
+          customerId: customerIds[1],
+          dateOfService: daysAgo(30),
+          problemDescription: "Emergency call - power outage in main production area",
+          workPerformed: "Diagnosed tripped main breaker due to overloaded circuit. Replaced damaged 100A breaker. Redistributed load across multiple circuits. Installed current monitoring on critical circuits.",
+          laborHours: 4,
+          laborRateCents: 12500, // Emergency rate
+          parts: [
+            { id: "p1", name: "100A Main Breaker", quantity: 1, unitCostCents: 8500, unitPriceCents: 15000, source: "inventory" as const },
+            { id: "p2", name: "Current Monitor", quantity: 2, unitCostCents: 4500, unitPriceCents: 7500, source: "inventory" as const },
+          ],
+          miscFeesCents: 7500,
+          miscFeesDescription: "Emergency after-hours call-out fee",
+          taxRate: 8.25,
+          status: "quoted",
+          technicianNotes: "Recommended electrical audit to prevent future overloads. Customer approved - scheduling next month.",
+        });
+        const invoice5 = await completeJob(job5.id);
+        // Record full payment
+        await recordPayment(invoice5.id, invoice5.totalCents, "check", "Check #4521");
+        jobsAdded++;
+
+        // Job 6: With customer-provided parts (pass-through)
+        const job6 = await addJob({
+          customerId: customerIds[0],
+          dateOfService: daysAgo(15),
+          problemDescription: "Install smart thermostat provided by customer",
+          workPerformed: "Installed customer-supplied Nest thermostat. Ran new C-wire from furnace to thermostat location. Configured WiFi and tested heating/cooling modes.",
+          laborHours: 1.5,
+          laborRateCents: 8500,
+          parts: [
+            { id: "p1", name: "Nest Thermostat (customer provided)", quantity: 1, unitCostCents: 0, unitPriceCents: 0, source: "customer-provided" as const },
+            { id: "p2", name: "Thermostat Wire 18/5 (25ft)", quantity: 1, unitCostCents: 1500, unitPriceCents: 2500, source: "inventory" as const },
+          ],
+          miscFeesCents: 0,
+          miscFeesDescription: "",
+          taxRate: 8.25,
+          status: "quoted",
+          technicianNotes: "Customer handled thermostat app setup. All working correctly.",
+        });
+        const invoice6 = await completeJob(job6.id);
+        // Partial payment
+        await recordPayment(invoice6.id, Math.round(invoice6.totalCents * 0.5), "credit-card", "Visa ending 4242 - partial payment");
+        jobsAdded++;
+
+        // Add annual reminder
+        await addReminder({
+          jobId: job6.id,
+          customerId: customerIds[0],
+          type: "annual-checkup",
+          title: "Annual HVAC system check for John Smith",
+          description: "Annual inspection of thermostat and HVAC electrical connections",
+          dueDate: daysFromNow(365),
+        });
+      }
+
+      // Add test expenses if none exist
+      if (expenses.length === 0) {
+        const today = new Date();
+        const daysAgo = (days: number) => {
+          const d = new Date(today);
+          d.setDate(d.getDate() - days);
+          return d.toISOString().split("T")[0];
+        };
+
+        await addExpense({
+          date: daysAgo(2),
+          vendor: "Home Depot",
+          category: "parts",
+          description: "Restock - wire nuts, electrical tape, junction boxes",
+          amountCents: 8750,
+          notes: "Monthly consumables restock",
+        });
+        await addExpense({
+          date: daysAgo(7),
+          vendor: "Shell Gas Station",
+          category: "fuel",
+          description: "Service van fuel",
+          amountCents: 6500,
+          notes: "",
+        });
+        await addExpense({
+          date: daysAgo(14),
+          vendor: "Milwaukee Tools",
+          category: "tools",
+          description: "M18 Impact Driver replacement",
+          amountCents: 19900,
+          notes: "Previous driver stopped working - warranty expired",
+        });
+        await addExpense({
+          date: daysAgo(20),
+          vendor: "Jiffy Lube",
+          category: "vehicle",
+          description: "Service van oil change and inspection",
+          amountCents: 7500,
+          notes: "50,000 mile service",
+        });
+        await addExpense({
+          date: daysAgo(25),
+          vendor: "Grainger",
+          category: "consumables",
+          description: "Safety glasses, work gloves, wire markers",
+          amountCents: 12500,
+          notes: "Quarterly safety equipment refresh",
+        });
+        await addExpense({
+          date: daysAgo(30),
+          vendor: "State of Illinois",
+          category: "misc",
+          description: "Annual electrical contractor license renewal",
+          amountCents: 25000,
+          notes: "License #EL-12345",
+        });
+        expensesAdded = 6;
+      }
+
+      const summary = [];
+      if (customersAdded > 0) summary.push(`${customersAdded} customers`);
+      if (inventoryAdded > 0) summary.push(`${inventoryAdded} inventory items`);
+      if (jobsAdded > 0) summary.push(`${jobsAdded} jobs (with invoices & reminders)`);
+      if (expensesAdded > 0) summary.push(`${expensesAdded} expenses`);
+
       toast({
-        title: "Test data seeded",
-        description: `Added ${customers.length === 0 ? "3 customers and " : ""}${inventoryItems.length === 0 ? "5 inventory items" : "data already exists"}. Go to Jobs to create a test job!`,
+        title: "Test data seeded successfully!",
+        description: summary.length > 0 
+          ? `Added: ${summary.join(", ")}` 
+          : "Data already exists. Clear data first to re-seed.",
       });
     } catch (error) {
       console.error("Seed error:", error);
