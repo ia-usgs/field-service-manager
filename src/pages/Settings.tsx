@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Save, Download, Upload, CheckCircle, AlertCircle } from "lucide-react";
+import { Save, Download, Upload, Database } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -21,9 +21,10 @@ const settingsSchema = z.object({
 type SettingsFormData = z.infer<typeof settingsSchema>;
 
 export default function Settings() {
-  const { settings, updateSettings, exportData, importData } = useStore();
+  const { settings, updateSettings, exportData, importData, addCustomer, addInventoryItem, customers, inventoryItems } = useStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   const { register, handleSubmit, reset } = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
@@ -57,6 +58,107 @@ export default function Settings() {
       title: "Settings saved",
       description: "Your settings have been updated successfully.",
     });
+  };
+
+  const handleSeedTestData = async () => {
+    setIsSeeding(true);
+    try {
+      // Add test customers if none exist
+      if (customers.length === 0) {
+        await addCustomer({
+          name: "John Smith",
+          email: "john.smith@example.com",
+          phone: "(555) 123-4567",
+          address: "123 Main Street, Springfield, IL 62701",
+          notes: "Preferred customer. Has annual maintenance contract.",
+          tags: ["residential", "priority"],
+        });
+        await addCustomer({
+          name: "ABC Manufacturing",
+          email: "maintenance@abcmfg.com",
+          phone: "(555) 987-6543",
+          address: "500 Industrial Blvd, Chicago, IL 60601",
+          notes: "Commercial account. Net 30 terms.",
+          tags: ["commercial", "net-30"],
+        });
+        await addCustomer({
+          name: "Sarah Johnson",
+          email: "sarah.j@email.com",
+          phone: "(555) 456-7890",
+          address: "456 Oak Avenue, Naperville, IL 60540",
+          notes: "New customer referral from John Smith.",
+          tags: ["residential"],
+        });
+      }
+
+      // Add test inventory items if none exist
+      if (inventoryItems.length === 0) {
+        await addInventoryItem({
+          name: "20A Circuit Breaker",
+          sku: "CB-20A-001",
+          description: "Standard 20 amp single-pole circuit breaker",
+          unitCostCents: 850,
+          unitPriceCents: 1500,
+          quantity: 25,
+          reorderLevel: 10,
+          category: "Breakers",
+        });
+        await addInventoryItem({
+          name: "GFCI Outlet",
+          sku: "GFCI-15A-WH",
+          description: "15 amp GFCI outlet, white, tamper-resistant",
+          unitCostCents: 1200,
+          unitPriceCents: 2500,
+          quantity: 15,
+          reorderLevel: 5,
+          category: "Outlets",
+        });
+        await addInventoryItem({
+          name: "LED Panel Light 2x4",
+          sku: "LED-2X4-40W",
+          description: "40W LED flat panel light, 4000K, dimmable",
+          unitCostCents: 4500,
+          unitPriceCents: 8500,
+          quantity: 10,
+          reorderLevel: 3,
+          category: "Lighting",
+        });
+        await addInventoryItem({
+          name: "Romex 12/2 Wire (250ft)",
+          sku: "ROMEX-12-2-250",
+          description: "12 gauge, 2 conductor with ground, NM-B cable",
+          unitCostCents: 8500,
+          unitPriceCents: 12500,
+          quantity: 8,
+          reorderLevel: 2,
+          category: "Wire",
+        });
+        await addInventoryItem({
+          name: "Smart Thermostat",
+          sku: "THERM-WIFI-PRO",
+          description: "WiFi-enabled programmable thermostat",
+          unitCostCents: 9500,
+          unitPriceCents: 17500,
+          quantity: 5,
+          reorderLevel: 2,
+          category: "HVAC",
+        });
+      }
+
+      toast({
+        title: "Test data seeded",
+        description: `Added ${customers.length === 0 ? "3 customers and " : ""}${inventoryItems.length === 0 ? "5 inventory items" : "data already exists"}. Go to Jobs to create a test job!`,
+      });
+    } catch (error) {
+      console.error("Seed error:", error);
+      toast({
+        title: "Seed failed",
+        description: error instanceof Error ? error.message : "Failed to seed test data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSeeding(false);
+    }
   };
 
   const handleExport = async () => {
@@ -242,6 +344,24 @@ export default function Settings() {
               {isImporting ? "Importing..." : "Import Backup"}
             </button>
           </div>
+        </div>
+
+        <div className="bg-card border border-border rounded-lg p-6">
+          <h3 className="font-semibold mb-2">Development Tools</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Seed test data to verify inventory and job tracking functionality.
+          </p>
+          <button 
+            onClick={handleSeedTestData} 
+            disabled={isSeeding}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Database className="w-4 h-4" /> 
+            {isSeeding ? "Seeding..." : "Seed Test Data"}
+          </button>
+          <p className="text-xs text-muted-foreground mt-2">
+            Adds 3 sample customers and 5 inventory items if none exist.
+          </p>
         </div>
       </div>
     </AppLayout>
