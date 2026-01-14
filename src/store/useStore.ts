@@ -332,6 +332,11 @@ export const useStore = create<AppState>((set, get) => ({
           })
         : state.inventoryItems,
     }));
+
+    // If this job has an invoice, recalculate it
+    if (job.invoiceId) {
+      await get().recalculateInvoice(job.invoiceId);
+    }
   },
 
   deleteJob: async (id) => {
