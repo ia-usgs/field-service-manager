@@ -75,8 +75,10 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sort inventory items alphabetically
-  const sortedInventoryItems = [...inventoryItems].sort((a, b) => a.name.localeCompare(b.name));
+  // Sort inventory items alphabetically and filter out items with no stock
+  const availableInventoryItems = inventoryItems
+    .filter((item) => item.quantity > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Load existing reminders and attachments when dialog opens
   useEffect(() => {
@@ -388,9 +390,9 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               <label className="text-sm font-medium">Parts</label>
               {!isViewOnly && (
                 <div className="flex items-center gap-2">
-                  {sortedInventoryItems.length > 0 && (
+                  {availableInventoryItems.length > 0 && (
                     <select
-                      className="input-field text-sm py-1"
+                      className="input-field text-sm py-1 bg-card"
                       onChange={(e) => {
                         const item = inventoryItems.find(i => i.id === e.target.value);
                         if (item) {
@@ -407,7 +409,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                       defaultValue=""
                     >
                       <option value="" disabled>Add from inventory...</option>
-                      {sortedInventoryItems.map((item) => (
+                      {availableInventoryItems.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name} (${(item.unitPriceCents / 100).toFixed(2)}) - {item.quantity} in stock
                         </option>
