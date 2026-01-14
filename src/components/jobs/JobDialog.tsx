@@ -20,6 +20,7 @@ const partSchema = z.object({
   unitCost: z.coerce.number().min(0),
   unitPrice: z.coerce.number().min(0),
   source: z.enum(["inventory", "customer-provided"]),
+  inventoryItemId: z.string().optional(),
 });
 
 const reminderPresetSchema = z.object({
@@ -199,6 +200,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         unitCostCents: dollarsToCents(p.unitCost),
         unitPriceCents: dollarsToCents(p.unitPrice),
         source: p.source || "inventory",
+        inventoryItemId: p.inventoryItemId,
       }));
 
       const jobData = {
@@ -402,6 +404,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                             unitCost: item.unitCostCents / 100,
                             unitPrice: item.unitPriceCents / 100,
                             source: "inventory",
+                            inventoryItemId: item.id,
                           });
                         }
                         e.target.value = "";
