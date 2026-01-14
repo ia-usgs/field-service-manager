@@ -96,26 +96,29 @@ export default function Customers() {
   };
 
   const customersWithStats = useMemo(() => {
-    return activeCustomers.map((customer) => {
-      const customerJobs = jobs.filter((j) => j.customerId === customer.id);
-      const customerInvoices = invoices.filter((i) => i.customerId === customer.id);
-      
-      const totalSpend = customerInvoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
-      const outstanding = customerInvoices
-        .filter((inv) => inv.paymentStatus !== "paid")
-        .reduce((sum, inv) => sum + (inv.totalCents - inv.paidAmountCents), 0);
-      
-      const lastJob = customerJobs
-        .sort((a, b) => new Date(b.dateOfService).getTime() - new Date(a.dateOfService).getTime())[0];
+    return activeCustomers
+      .map((customer) => {
+        const customerJobs = jobs.filter((j) => j.customerId === customer.id);
+        const customerInvoices = invoices.filter((i) => i.customerId === customer.id);
+        
+        const totalSpend = customerInvoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+        const outstanding = customerInvoices
+          .filter((inv) => inv.paymentStatus !== "paid")
+          .reduce((sum, inv) => sum + (inv.totalCents - inv.paidAmountCents), 0);
+        
+        const lastJob = customerJobs
+          .sort((a, b) => new Date(b.dateOfService).getTime() - new Date(a.dateOfService).getTime())[0];
 
-      return {
-        ...customer,
-        jobCount: customerJobs.length,
-        totalSpend,
-        outstanding,
-        lastServiceDate: lastJob?.dateOfService || null,
-      };
-    });
+        return {
+          ...customer,
+          jobCount: customerJobs.length,
+          totalSpend,
+          outstanding,
+          lastServiceDate: lastJob?.dateOfService || null,
+        };
+      })
+      // Sort alphabetically by name (A-Z)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [activeCustomers, jobs, invoices]);
 
   const columns = [

@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Payment, Reminder, Attachment } from '@/types';
+import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Payment, Reminder, Attachment, InventoryItem } from '@/types';
 
 interface ServiceManagerDB extends DBSchema {
   customers: {
@@ -37,6 +37,11 @@ interface ServiceManagerDB extends DBSchema {
     value: Attachment;
     indexes: { 'by-job': string };
   };
+  inventoryItems: {
+    key: string;
+    value: InventoryItem;
+    indexes: { 'by-name': string; 'by-category': string };
+  };
   settings: {
     key: string;
     value: AppSettings;
@@ -49,7 +54,7 @@ interface ServiceManagerDB extends DBSchema {
 }
 
 const DB_NAME = 'service-manager-db';
-const DB_VERSION = 3; // Bumped to force schema rebuild after removing attachment.data
+const DB_VERSION = 4; // Bumped for inventory items store
 
 let dbInstance: IDBPDatabase<ServiceManagerDB> | null = null;
 
@@ -88,14 +93,14 @@ export async function getDB(): Promise<IDBPDatabase<ServiceManagerDB>> {
         expenseStore.createIndex('by-category', 'category');
       }
 
-      // Payments store (new in v2)
+      // Payments store
       if (!db.objectStoreNames.contains('payments')) {
         const paymentStore = db.createObjectStore('payments', { keyPath: 'id' });
         paymentStore.createIndex('by-invoice', 'invoiceId');
         paymentStore.createIndex('by-date', 'date');
       }
 
-      // Reminders store (new in v2)
+      // Reminders store
       if (!db.objectStoreNames.contains('reminders')) {
         const reminderStore = db.createObjectStore('reminders', { keyPath: 'id' });
         reminderStore.createIndex('by-job', 'jobId');
@@ -104,10 +109,17 @@ export async function getDB(): Promise<IDBPDatabase<ServiceManagerDB>> {
         reminderStore.createIndex('by-completed', 'completed');
       }
 
-      // Attachments store (new in v2)
+      // Attachments store
       if (!db.objectStoreNames.contains('attachments')) {
         const attachmentStore = db.createObjectStore('attachments', { keyPath: 'id' });
         attachmentStore.createIndex('by-job', 'jobId');
+      }
+
+      // Inventory items store (new in v4)
+      if (!db.objectStoreNames.contains('inventoryItems')) {
+        const inventoryStore = db.createObjectStore('inventoryItems', { keyPath: 'id' });
+        inventoryStore.createIndex('by-name', 'name');
+        inventoryStore.createIndex('by-category', 'category');
       }
 
       // Settings store
