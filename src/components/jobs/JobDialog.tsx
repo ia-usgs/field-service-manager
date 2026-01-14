@@ -288,7 +288,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
       <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {job ? (isLocked ? "View Job" : "Edit Job") : "Create New Job"}
+            {job ? (isViewOnly ? "View Job" : "Edit Job") : "Create New Job"}
           </DialogTitle>
         </DialogHeader>
 
@@ -300,7 +300,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               <select
                 {...register("customerId")}
                 className="input-field w-full"
-                disabled={isLocked || !!customerId}
+                disabled={isViewOnly || !!customerId}
               >
                 <option value="">Select customer...</option>
                 {activeCustomers.map((c) => (
@@ -320,7 +320,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 {...register("dateOfService")}
                 type="date"
                 className="input-field w-full"
-                disabled={isLocked}
+                disabled={isViewOnly}
               />
             </div>
           </div>
@@ -332,7 +332,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               {...register("problemDescription")}
               className="input-field w-full min-h-[60px] resize-none"
               placeholder="What was wrong?"
-              disabled={isLocked}
+              disabled={isViewOnly}
             />
             {errors.problemDescription && (
               <p className="text-destructive text-xs mt-1">{errors.problemDescription.message}</p>
@@ -345,7 +345,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               {...register("workPerformed")}
               className="input-field w-full min-h-[60px] resize-none"
               placeholder="What was done?"
-              disabled={isLocked}
+              disabled={isViewOnly}
             />
           </div>
 
@@ -358,7 +358,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 type="number"
                 step="0.25"
                 className="input-field w-full"
-                disabled={isLocked}
+                disabled={isViewOnly}
               />
             </div>
             <div>
@@ -368,7 +368,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 type="number"
                 step="0.01"
                 className="input-field w-full"
-                disabled={isLocked}
+                disabled={isViewOnly}
               />
             </div>
             <div>
@@ -383,7 +383,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium">Parts</label>
-              {!isLocked && (
+              {!isViewOnly && (
                 <button
                   type="button"
                   onClick={() => appendPart({ name: "", quantity: 1, unitCost: 0, unitPrice: 0, source: "inventory" })}
@@ -410,14 +410,14 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                     {...register(`parts.${index}.name`)}
                     placeholder="Part name"
                     className="input-field col-span-2"
-                    disabled={isLocked}
+                    disabled={isViewOnly}
                   />
                   <input
                     {...register(`parts.${index}.quantity`)}
                     type="number"
                     placeholder="Qty"
                     className="input-field"
-                    disabled={isLocked}
+                    disabled={isViewOnly}
                   />
                   <input
                     {...register(`parts.${index}.unitCost`)}
@@ -425,7 +425,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                     step="0.01"
                     placeholder="Cost"
                     className="input-field"
-                    disabled={isLocked}
+                    disabled={isViewOnly}
                     title="Your cost (what you paid)"
                   />
                   <input
@@ -434,10 +434,10 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                     step="0.01"
                     placeholder="Price"
                     className="input-field"
-                    disabled={isLocked}
+                    disabled={isViewOnly}
                     title="Customer price (what you charge)"
                   />
-                  {!isLocked && (
+                  {!isViewOnly && (
                     <button
                       type="button"
                       onClick={() => removePart(index)}
@@ -456,7 +456,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                         {...register(`parts.${index}.source`)}
                         value="inventory"
                         className="accent-primary"
-                        disabled={isLocked}
+                        disabled={isViewOnly}
                       />
                       <span>From Inventory</span>
                       <span className="text-muted-foreground">(markup = income)</span>
@@ -467,7 +467,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                         {...register(`parts.${index}.source`)}
                         value="customer-provided"
                         className="accent-primary"
-                        disabled={isLocked}
+                        disabled={isViewOnly}
                       />
                       <span>Customer Paid</span>
                       <span className="text-muted-foreground">(pass-through)</span>
@@ -492,7 +492,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 type="number"
                 step="0.01"
                 className="input-field w-full"
-                disabled={isLocked}
+                disabled={isViewOnly}
               />
             </div>
             <div>
@@ -501,7 +501,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 {...register("miscFeesDescription")}
                 className="input-field w-full"
                 placeholder="Travel, disposal, etc."
-                disabled={isLocked}
+                disabled={isViewOnly}
               />
             </div>
           </div>
@@ -515,7 +515,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                 type="number"
                 step="0.01"
                 className="input-field w-full"
-                disabled={isLocked}
+                disabled={isViewOnly}
               />
             </div>
             <div>
@@ -523,7 +523,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               <select
                 {...register("status")}
                 className="input-field w-full"
-                disabled={isLocked}
+                disabled={isViewOnly}
               >
                 <option value="quoted">Quoted</option>
                 <option value="in-progress">In Progress</option>
@@ -541,7 +541,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                   {job ? "Service Reminders" : "Schedule Service Reminders"}
                 </label>
               </div>
-              {job && !isLocked && (
+              {job && !isViewOnly && (
                 <button
                   type="button"
                   onClick={() => setShowAddReminder(!showAddReminder)}
@@ -707,7 +707,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                             Due: {new Date(reminder.dueDate).toLocaleDateString()}
                           </p>
                         </div>
-                        {!isLocked && (
+                        {!isViewOnly && (
                           <div className="flex items-center gap-1">
                             {!reminder.completed && (
                               <>
@@ -853,7 +853,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
             </div>
 
             {/* Upload controls */}
-            {!isLocked && (
+            {!isViewOnly && (
               <div className="flex items-center gap-2 mb-3">
                 <select
                   value={selectedAttachmentType}
@@ -957,7 +957,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                         <FileText className="w-6 h-6 text-muted-foreground" />
                       </div>
                     )}
-                    {!isLocked && (
+                    {!isViewOnly && (
                       <button
                         type="button"
                         onClick={async () => {
@@ -1011,7 +1011,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           </div>
 
           {/* Actions */}
-          {!isLocked && (
+          {!isViewOnly && (
             <div className="flex gap-3 pt-4">
               <button
                 type="button"
@@ -1030,9 +1030,9 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
             </div>
           )}
 
-          {isLocked && (
+          {isViewOnly && (
             <p className="text-sm text-muted-foreground text-center">
-              This job is locked because an invoice has been generated.
+              This job is in view-only mode.
             </p>
           )}
         </form>
