@@ -11,6 +11,7 @@ import {
   ChevronRight,
   BarChart3,
   Package,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -23,6 +24,7 @@ const navItems = [
   { title: "Expenses", url: "/expenses", icon: Receipt },
   { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "Logs", url: "/logs", icon: Activity },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
