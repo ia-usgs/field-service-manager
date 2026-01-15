@@ -219,15 +219,26 @@ export default function Reports() {
   const COLORS = ["hsl(199, 89%, 48%)", "hsl(142, 71%, 45%)", "hsl(38, 92%, 50%)", "hsl(262, 83%, 58%)", "hsl(0, 84%, 60%)"];
 
   const exportCSV = (data: any[], filename: string) => {
-    const headers = Object.keys(data[0] || {}).join(",");
-    const rows = data.map((row) => Object.values(row).join(",")).join("\n");
+    if (!data || data.length === 0) {
+      alert("No data to export");
+      return;
+    }
+    const headers = Object.keys(data[0]).join(",");
+    const rows = data.map((row) => 
+      Object.values(row).map(val => 
+        typeof val === "string" && val.includes(",") ? `"${val}"` : val
+      ).join(",")
+    ).join("\n");
     const csv = `${headers}\n${rows}`;
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Calculate totals
