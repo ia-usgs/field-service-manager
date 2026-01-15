@@ -13,6 +13,7 @@ import InvoiceDetail from "./pages/InvoiceDetail";
 import Expenses from "./pages/Expenses";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
+import Logs from "./pages/Logs";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { GitHubUpdateChecker } from "./components/GitHubUpdateChecker";
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
