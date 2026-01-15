@@ -95,6 +95,12 @@ export function AttachmentManager({
     setIsUploading(true);
 
     try {
+      const { isTauri } = await import("@/lib/fileProcessing");
+      if (!isTauri()) {
+        alert("File attachments require the desktop app. Please use the Tauri build.");
+        return;
+      }
+
       const newAttachments: Attachment[] = [];
 
       // Process all files
@@ -117,6 +123,7 @@ export function AttachmentManager({
       setAttachments([...attachments, ...newAttachments]);
     } catch (error) {
       console.error("Error uploading files:", error);
+      alert("Failed to save attachment. Please try again.");
     } finally {
       setIsUploading(false);
       // Reset file input

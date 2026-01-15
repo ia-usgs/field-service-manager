@@ -83,7 +83,7 @@ export default function Settings() {
           });
         }
       } else {
-        // Web fallback
+        // Web fallback - downloads to default browser downloads folder
         const blob = new Blob([data], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -93,7 +93,7 @@ export default function Settings() {
         URL.revokeObjectURL(url);
         toast({
           title: "Backup exported",
-          description: "Your data has been downloaded.",
+          description: `Downloaded as "${filename}" to your Downloads folder.`,
         });
       }
     } catch (error) {
