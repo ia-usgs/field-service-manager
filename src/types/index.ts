@@ -156,3 +156,12 @@ export interface AuditLog {
   details: string;
   timestamp: string;
 }
+
+export interface ErrorLog {
+  id: string;
+  level: 'error' | 'warning' | 'info';
+  message: string;
+  stack?: string;
+  source?: string;
+  timestamp: string;
+}

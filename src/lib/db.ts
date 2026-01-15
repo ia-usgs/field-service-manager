@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Payment, Reminder, Attachment, InventoryItem } from '@/types';
+import { Customer, Job, Invoice, Expense, AppSettings, AuditLog, Payment, Reminder, Attachment, InventoryItem, ErrorLog } from '@/types';
 
 interface ServiceManagerDB extends DBSchema {
   customers: {
@@ -51,10 +51,15 @@ interface ServiceManagerDB extends DBSchema {
     value: AuditLog;
     indexes: { 'by-entity': string; 'by-timestamp': string };
   };
+  errorLogs: {
+    key: string;
+    value: ErrorLog;
+    indexes: { 'by-level': string; 'by-timestamp': string };
+  };
 }
 
 const DB_NAME = 'service-manager-db';
-const DB_VERSION = 4; // Bumped for inventory items store
+const DB_VERSION = 5; // Bumped for error logs store
 
 let dbInstance: IDBPDatabase<ServiceManagerDB> | null = null;
 
@@ -132,6 +137,13 @@ export async function getDB(): Promise<IDBPDatabase<ServiceManagerDB>> {
         const auditStore = db.createObjectStore('auditLog', { keyPath: 'id' });
         auditStore.createIndex('by-entity', 'entityId');
         auditStore.createIndex('by-timestamp', 'timestamp');
+      }
+
+      // Error logs store (new in v5)
+      if (!db.objectStoreNames.contains('errorLogs')) {
+        const errorStore = db.createObjectStore('errorLogs', { keyPath: 'id' });
+        errorStore.createIndex('by-level', 'level');
+        errorStore.createIndex('by-timestamp', 'timestamp');
       }
     },
   });
