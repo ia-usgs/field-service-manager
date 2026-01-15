@@ -223,22 +223,28 @@ export default function Reports() {
       alert("No data to export");
       return;
     }
-    const headers = Object.keys(data[0]).join(",");
-    const rows = data.map((row) => 
-      Object.values(row).map(val => 
-        typeof val === "string" && val.includes(",") ? `"${val}"` : val
-      ).join(",")
-    ).join("\n");
-    const csv = `${headers}\n${rows}`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const headers = Object.keys(data[0]).join(",");
+      const rows = data.map((row) => 
+        Object.values(row).map(val => 
+          typeof val === "string" && val.includes(",") ? `"${val}"` : String(val)
+        ).join(",")
+      ).join("\n");
+      const csv = `${headers}\n${rows}`;
+      
+      // Use data URI approach which works better in iframes/sandboxed environments
+      const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", filename);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert("Export failed. Please try again.");
+    }
   };
 
   // Calculate totals
