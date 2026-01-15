@@ -1023,21 +1023,34 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   exportData: async () => {
-    const state = get();
-    const exportData = {
+    // Read directly from IndexedDB to ensure we get actual persisted data
+    const db = await getDB();
+    const [customers, jobs, invoices, expenses, payments, reminders, attachments, inventoryItems, settingsRecord] = await Promise.all([
+      db.getAll('customers'),
+      db.getAll('jobs'),
+      db.getAll('invoices'),
+      db.getAll('expenses'),
+      db.getAll('payments'),
+      db.getAll('reminders'),
+      db.getAll('attachments'),
+      db.getAll('inventoryItems'),
+      db.get('settings', 'default'),
+    ]);
+
+    const exportPayload = {
       version: 3,
       exportDate: new Date().toISOString(),
-      customers: state.customers,
-      jobs: state.jobs,
-      invoices: state.invoices,
-      expenses: state.expenses,
-      payments: state.payments,
-      reminders: state.reminders,
-      attachments: state.attachments,
-      inventoryItems: state.inventoryItems,
-      settings: state.settings,
+      customers,
+      jobs,
+      invoices,
+      expenses,
+      payments,
+      reminders,
+      attachments,
+      inventoryItems,
+      settings: settingsRecord || null,
     };
-    return JSON.stringify(exportData, null, 2);
+    return JSON.stringify(exportPayload, null, 2);
   },
 
   importData: async (jsonData) => {
