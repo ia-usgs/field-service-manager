@@ -255,19 +255,28 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           });
         }
 
-        // Save pending attachments for new jobs
-        for (const pending of pendingAttachments) {
-          const processedFile = await maybeCompressImage(pending.file);
-          const { filePath, size } = await saveAttachmentFile(processedFile, targetJobId);
+        // Save pending attachments for new jobs (only in Tauri)
+        if (pendingAttachments.length > 0) {
+          try {
+            const { isTauri } = await import("@/lib/fileProcessing");
+            if (isTauri()) {
+              for (const pending of pendingAttachments) {
+                const processedFile = await maybeCompressImage(pending.file);
+                const { filePath, size } = await saveAttachmentFile(processedFile, targetJobId);
 
-          await addAttachment({
-            jobId: targetJobId,
-            type: pending.type,
-            name: processedFile.name,
-            mimeType: processedFile.type,
-            filePath,
-            size,
-          });
+                await addAttachment({
+                  jobId: targetJobId,
+                  type: pending.type,
+                  name: processedFile.name,
+                  mimeType: processedFile.type,
+                  filePath,
+                  size,
+                });
+              }
+            }
+          } catch (err) {
+            console.error("Failed to save attachments:", err);
+          }
         }
         
         // If created as completed, auto-generate invoice
@@ -276,9 +285,11 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         }
       }
 
-      onOpenChange(false);
       reset();
       setPendingAttachments([]);
+      onOpenChange(false);
+    } catch (err) {
+      console.error("Failed to save job:", err);
     } finally {
       setIsSubmitting(false);
     }
