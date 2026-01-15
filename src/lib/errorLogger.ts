@@ -108,7 +108,7 @@ export function initializeErrorLogging(): void {
     });
   });
 
-  // Intercept console.error
+  // Intercept console.error (filter out React internal warnings)
   const originalConsoleError = console.error;
   console.error = (...args) => {
     originalConsoleError.apply(console, args);
@@ -127,19 +127,31 @@ export function initializeErrorLogging(): void {
       })
       .join(' ');
 
-    // Don't log our own error logging failures
-    if (!message.includes('Failed to save error log')) {
+    // Filter out noise: our own logging failures, React internal warnings
+    const shouldIgnore = 
+      message.includes('Failed to save error log') ||
+      message.includes('Warning: Function components cannot be given refs') ||
+      message.includes('Warning: React does not recognize') ||
+      message.includes('Warning: Invalid DOM property') ||
+      message.includes('Warning: Each child in a list') ||
+      message.startsWith('Warning:');
+
+    if (!shouldIgnore) {
       logError(message, { source: 'console.error' });
     }
   };
 
-  // Intercept console.warn
+  // Intercept console.warn (filter out React dev warnings)
   const originalConsoleWarn = console.warn;
   console.warn = (...args) => {
     originalConsoleWarn.apply(console, args);
     
     const message = args.map((arg) => String(arg)).join(' ');
-    logWarning(message, 'console.warn');
+    
+    // Filter out React development warnings
+    if (!message.startsWith('Warning:')) {
+      logWarning(message, 'console.warn');
+    }
   };
 
   isInitialized = true;

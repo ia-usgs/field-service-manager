@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { forwardRef, ReactNode } from "react";
 
 interface PageHeaderProps {
   title: string;
@@ -6,16 +6,20 @@ interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, description, actions }: PageHeaderProps) {
-  return (
-    <div className="flex items-center justify-between mb-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        {description && (
-          <p className="text-muted-foreground mt-1">{description}</p>
-        )}
+export const PageHeader = forwardRef<HTMLDivElement, PageHeaderProps>(
+  ({ title, description, actions }, ref) => {
+    return (
+      <div ref={ref} className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          {description && (
+            <p className="text-muted-foreground mt-1">{description}</p>
+          )}
+        </div>
+        {actions && <div className="flex items-center gap-3">{actions}</div>}
       </div>
-      {actions && <div className="flex items-center gap-3">{actions}</div>}
-    </div>
-  );
-}
+    );
+  }
+);
+
+PageHeader.displayName = "PageHeader";
