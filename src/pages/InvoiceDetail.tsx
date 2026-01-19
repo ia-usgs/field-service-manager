@@ -30,11 +30,26 @@ export default function InvoiceDetail() {
     );
   }
 
+  // HTML-encode special characters to prevent XSS/injection in PDF generation
+  const encodeHTML = (str: string | undefined): string => {
+    if (!str) return "";
+    return str.replace(/[<>&"']/g, (c) => {
+      const entities: Record<string, string> = {
+        '<': '&lt;',
+        '>': '&gt;',
+        '&': '&amp;',
+        '"': '&quot;',
+        "'": '&#39;'
+      };
+      return entities[c] || c;
+    });
+  };
+
   const generateInvoiceHTML = (logoDataUrl: string) => {
     return `<!DOCTYPE html>
 <html>
 <head>
-  <title>Invoice ${invoice.invoiceNumber}</title>
+  <title>Invoice ${encodeHTML(invoice.invoiceNumber)}</title>
   <style>
     * {
       margin: 0;
@@ -190,16 +205,16 @@ export default function InvoiceDetail() {
       <div class="logo-section">
         <img src="${logoDataUrl}" alt="Logo" class="logo-img" />
         <div>
-          <div class="company-name">${settings?.companyName || "Tech & Electrical Services"}</div>
+          <div class="company-name">${encodeHTML(settings?.companyName || "Tech & Electrical Services")}</div>
           <div class="company-details">
-            ${settings?.companyAddress || ""}<br/>
-            ${settings?.companyPhone || ""} • ${settings?.companyEmail || ""}
+            ${encodeHTML(settings?.companyAddress || "")}<br/>
+            ${encodeHTML(settings?.companyPhone || "")} • ${encodeHTML(settings?.companyEmail || "")}
           </div>
         </div>
       </div>
       <div class="invoice-title">
         <h1>INVOICE</h1>
-        <div class="invoice-number">${invoice.invoiceNumber}</div>
+        <div class="invoice-number">${encodeHTML(invoice.invoiceNumber)}</div>
       </div>
     </div>
 
@@ -207,10 +222,10 @@ export default function InvoiceDetail() {
       <div class="meta-section">
         <h3>Bill To</h3>
         <p>
-          <strong>${customer?.name || "Customer"}</strong><br/>
-          ${customer?.address || ""}<br/>
-          ${customer?.email || ""}<br/>
-          ${customer?.phone || ""}
+          <strong>${encodeHTML(customer?.name || "Customer")}</strong><br/>
+          ${encodeHTML(customer?.address || "")}<br/>
+          ${encodeHTML(customer?.email || "")}<br/>
+          ${encodeHTML(customer?.phone || "")}
         </p>
       </div>
       <div class="meta-section" style="text-align: right;">
@@ -235,21 +250,21 @@ export default function InvoiceDetail() {
         <tbody>
           ${invoice.laborTotalCents > 0 ? `
           <tr>
-            <td>Labor - ${job?.workPerformed || job?.problemDescription || "Service"}</td>
+            <td>Labor - ${encodeHTML(job?.workPerformed || job?.problemDescription || "Service")}</td>
             <td>${job?.laborHours || 0} hrs</td>
             <td>$${centsToDollars(invoice.laborTotalCents)}</td>
           </tr>
           ` : ""}
           ${job?.parts.map((part) => `
           <tr>
-            <td>${part.name}</td>
+            <td>${encodeHTML(part.name)}</td>
             <td>${part.quantity}</td>
             <td>$${centsToDollars(part.quantity * part.unitPriceCents)}</td>
           </tr>
           `).join("") || ""}
           ${invoice.miscFeesCents > 0 ? `
           <tr>
-            <td>${job?.miscFeesDescription || "Miscellaneous Fees"}</td>
+            <td>${encodeHTML(job?.miscFeesDescription || "Miscellaneous Fees")}</td>
             <td>1</td>
             <td>$${centsToDollars(invoice.miscFeesCents)}</td>
           </tr>
@@ -287,7 +302,7 @@ export default function InvoiceDetail() {
 
     <div class="footer">
       <p>Thank you for your business!</p>
-      <p style="margin-top: 8px;">${settings?.companyName || "Tech & Electrical Services"}</p>
+      <p style="margin-top: 8px;">${encodeHTML(settings?.companyName || "Tech & Electrical Services")}</p>
     </div>
   </div>
 </body>
