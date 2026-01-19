@@ -22,8 +22,10 @@ export function GitHubUpdateChecker() {
     setIsChecking(true);
     
     try {
-      // Fetch current bundled version
-      const localResponse = await fetch("/version.json", { cache: "no-store" });
+      // Fetch current bundled version (cache-busted to avoid SW/HTTP caches)
+      const localResponse = await fetch(`/version.json?t=${Date.now()}`, {
+        cache: "no-store",
+      });
       const localData: VersionInfo = await localResponse.json();
       setCurrentVersion(localData.version);
 
@@ -65,9 +67,24 @@ export function GitHubUpdateChecker() {
     };
   }, [checkForUpdates]);
 
-  const handleUpdate = () => {
-    // Force a hard refresh to get the latest version
-    window.location.reload();
+  const handleUpdate = async () => {
+    // Best-effort “hard” refresh when a service worker is present.
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } finally {
+      // Reload with a cache-busting querystring.
+      const url = new URL(window.location.href);
+      url.searchParams.set("t", String(Date.now()));
+      window.location.replace(url.toString());
+    }
   };
 
   const handleDismiss = () => {
