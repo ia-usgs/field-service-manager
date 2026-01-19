@@ -78,9 +78,10 @@ export default function Inventory() {
     const totalQuantity = partsAnalysis.reduce((sum, p) => sum + p.quantity, 0);
     const avgMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100) : 0;
 
-    // Inventory value
+    // Inventory value and stock
     const inventoryValue = inventoryItems.reduce((sum, item) => sum + (item.unitCostCents * item.quantity), 0);
     const inventorySellValue = inventoryItems.reduce((sum, item) => sum + (item.unitPriceCents * item.quantity), 0);
+    const totalStockQuantity = inventoryItems.reduce((sum, item) => sum + item.quantity, 0);
     const lowStockItems = inventoryItems.filter(item => item.reorderLevel && item.quantity <= item.reorderLevel).length;
 
     return {
@@ -94,6 +95,7 @@ export default function Inventory() {
       inventorySellValue,
       lowStockItems,
       totalItems: inventoryItems.length,
+      totalStockQuantity,
     };
   }, [partsAnalysis, inventoryItems]);
 
@@ -214,7 +216,7 @@ export default function Inventory() {
         <StatCard
           title="Inventory Value"
           value={`$${centsToDollars(stats.inventoryValue)}`}
-          subtitle={`${stats.totalItems} items in stock`}
+          subtitle={`${stats.totalStockQuantity} units across ${stats.totalItems} items`}
           icon={Package}
           variant="default"
         />
