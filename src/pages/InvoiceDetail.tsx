@@ -6,6 +6,7 @@ import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PaymentDialog } from "@/components/invoices/PaymentDialog";
 import { centsToDollars } from "@/lib/db";
+import { logError, logInfo } from "@/lib/errorLogger";
 import logo from "@/assets/logo.png";
 
 export default function InvoiceDetail() {
@@ -29,7 +30,7 @@ export default function InvoiceDetail() {
     );
   }
 
-  const generateInvoiceHTML = () => {
+  const generateInvoiceHTML = (logoDataUrl: string) => {
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -62,6 +63,11 @@ export default function InvoiceDetail() {
       display: flex;
       align-items: center;
       gap: 16px;
+    }
+    .logo-img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
     }
     .company-name {
       font-size: 24px;
@@ -182,6 +188,7 @@ export default function InvoiceDetail() {
   <div class="invoice-container">
     <div class="header">
       <div class="logo-section">
+        <img src="${logoDataUrl}" alt="Logo" class="logo-img" />
         <div>
           <div class="company-name">${settings?.companyName || "Tech & Electrical Services"}</div>
           <div class="company-details">
@@ -287,28 +294,65 @@ export default function InvoiceDetail() {
 </html>`;
   };
 
+  const convertImageToDataUrl = (imageSrc: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } else {
+          reject(new Error("Failed to get canvas context"));
+        }
+      };
+      img.onerror = () => reject(new Error("Failed to load logo image"));
+      img.src = imageSrc;
+    });
+  };
+
   const handleDownloadInvoice = async () => {
-    const html = generateInvoiceHTML();
+    let container: HTMLDivElement | null = null;
     
-    // Create a temporary container to render the HTML
-    const container = document.createElement("div");
-    container.innerHTML = html;
-    container.style.position = "absolute";
-    container.style.left = "-9999px";
-    document.body.appendChild(container);
-
-    const opt = {
-      margin: 0,
-      filename: `${invoice.invoiceNumber}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-    };
-
     try {
+      await logInfo(`Starting PDF generation for invoice ${invoice.invoiceNumber}`, "InvoiceDetail");
+      
+      // Convert logo to data URL for embedding in PDF
+      const logoDataUrl = await convertImageToDataUrl(logo);
+      const html = generateInvoiceHTML(logoDataUrl);
+      
+      // Create a temporary container to render the HTML
+      container = document.createElement("div");
+      container.innerHTML = html;
+      container.style.position = "absolute";
+      container.style.left = "-9999px";
+      document.body.appendChild(container);
+
+      const opt = {
+        margin: 0,
+        filename: `${invoice.invoiceNumber}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+      };
+
       await html2pdf().set(opt).from(container).save();
+      await logInfo(`Successfully generated PDF for invoice ${invoice.invoiceNumber}`, "InvoiceDetail");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await logError(`Failed to generate PDF for invoice ${invoice.invoiceNumber}: ${errorMessage}`, {
+        source: "InvoiceDetail",
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
     } finally {
-      document.body.removeChild(container);
+      if (container && document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
     }
   };
 
