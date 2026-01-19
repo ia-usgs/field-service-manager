@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => ({
         "@tauri-apps/api/fs",
         "@tauri-apps/api/path",
         "@tauri-apps/api/tauri",
+        "@tauri-apps/api/dialog",
       ],
     },
   },
