@@ -47,8 +47,16 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
+        // Ensure the newest service worker takes control quickly (important for update flows)
+        skipWaiting: true,
         clientsClaim: true,
+        // Never cache version.json; it must always reflect the currently deployed build
+        runtimeCaching: [
+          {
+            urlPattern: /\/version\.json(\?.*)?$/,
+            handler: "NetworkOnly",
+          },
+        ],
       },
     }),
   ].filter(Boolean),
