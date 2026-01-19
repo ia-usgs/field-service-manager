@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, X, Github } from "lucide-react";
+import { Download, X, Github } from "lucide-react";
 
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/ia-usgs/field-service-manager/main/public/version.json";
+const GITHUB_RELEASES_URL = "https://github.com/ia-usgs/field-service-manager/releases";
 const CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
 
 interface VersionInfo {
@@ -67,24 +68,9 @@ export function GitHubUpdateChecker() {
     };
   }, [checkForUpdates]);
 
-  const handleUpdate = async () => {
-    // Best-effort “hard” refresh when a service worker is present.
-    try {
-      if ("serviceWorker" in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((r) => r.unregister()));
-      }
-
-      if ("caches" in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      }
-    } finally {
-      // Reload with a cache-busting querystring.
-      const url = new URL(window.location.href);
-      url.searchParams.set("t", String(Date.now()));
-      window.location.replace(url.toString());
-    }
+  const handleUpdate = () => {
+    // For Tauri desktop apps, open the GitHub releases page to download the new exe
+    window.open(GITHUB_RELEASES_URL, "_blank");
   };
 
   const handleDismiss = () => {
@@ -104,8 +90,8 @@ export function GitHubUpdateChecker() {
       </div>
       <div className="flex gap-2">
         <Button size="sm" onClick={handleUpdate} className="gap-1">
-          <RefreshCw className="h-3 w-3" />
-          Update
+          <Download className="h-3 w-3" />
+          Download
         </Button>
         <Button size="sm" variant="ghost" onClick={handleDismiss}>
           <X className="h-4 w-4" />
