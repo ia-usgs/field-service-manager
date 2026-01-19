@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import html2pdf from "html2pdf.js";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Mail, DollarSign } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -286,17 +287,29 @@ export default function InvoiceDetail() {
 </html>`;
   };
 
-  const handleDownloadInvoice = () => {
+  const handleDownloadInvoice = async () => {
     const html = generateInvoiceHTML();
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${invoice.invoiceNumber}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    
+    // Create a temporary container to render the HTML
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    document.body.appendChild(container);
+
+    const opt = {
+      margin: 0,
+      filename: `${invoice.invoiceNumber}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+    };
+
+    try {
+      await html2pdf().set(opt).from(container).save();
+    } finally {
+      document.body.removeChild(container);
+    }
   };
 
   const handleEmailInvoice = () => {
