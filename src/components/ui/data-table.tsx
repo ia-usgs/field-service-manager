@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 interface Column<T> {
   key: keyof T | string;
-  header: string;
+  header: string | (() => ReactNode);
   render?: (item: T) => ReactNode;
   sortable?: boolean;
   className?: string;
@@ -94,7 +94,7 @@ export function DataTable<T extends Record<string, any>>({
                     }
                   >
                     <div className="flex items-center gap-2">
-                      {column.header}
+                      {typeof column.header === "function" ? column.header() : column.header}
                       {column.sortable && sortKey === String(column.key) && (
                         <span>
                           {sortDirection === "asc" ? (
