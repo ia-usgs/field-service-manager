@@ -196,6 +196,11 @@ export function InventoryItemDialog({ open, onOpenChange, item }: InventoryItemD
                 type="number"
                 className="input-field w-full"
               />
+              {watchedValues.quantity === 0 && (
+                <p className="text-warning text-xs mt-1">
+                  Items with 0 stock won't be selectable in jobs
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Reorder Level</label>

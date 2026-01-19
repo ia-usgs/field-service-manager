@@ -63,7 +63,7 @@ const defaultReminders = [
 ];
 
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment, inventoryItems } = useStore();
+  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment, inventoryItems, addInventoryItem } = useStore();
   const [existingReminders, setExistingReminders] = useState<Reminder[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
   const [pendingAttachments, setPendingAttachments] = useState<{ file: File; type: Attachment["type"] }[]>([]);
@@ -75,11 +75,14 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
   const [selectedAttachmentType, setSelectedAttachmentType] = useState<Attachment["type"]>("photo-before");
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Track custom parts to optionally add to inventory after save
+  const [showAddToInventoryPrompt, setShowAddToInventoryPrompt] = useState(false);
+  const [customPartsToAdd, setCustomPartsToAdd] = useState<{ name: string; unitCostCents: number; unitPriceCents: number; quantity: number; selected: boolean }[]>([]);
 
-  // Sort inventory items alphabetically and filter out items with no stock
-  const availableInventoryItems = inventoryItems
-    .filter((item) => item.quantity > 0)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Sort inventory items alphabetically - show all, but mark out of stock ones
+  const sortedInventoryItems = [...inventoryItems].sort((a, b) => a.name.localeCompare(b.name));
+  const hasAnyInventoryItems = inventoryItems.length > 0;
 
   // Load existing reminders and attachments when dialog opens
   useEffect(() => {
@@ -285,6 +288,19 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         }
       }
 
+      // Check for custom parts (inventory source but no inventoryItemId) to prompt adding to inventory
+      const customParts = parts.filter(p => p.source === "inventory" && !p.inventoryItemId && p.name.trim());
+      if (customParts.length > 0) {
+        setCustomPartsToAdd(customParts.map(p => ({
+          name: p.name,
+          unitCostCents: p.unitCostCents,
+          unitPriceCents: p.unitPriceCents,
+          quantity: 0, // Default stock to 0, user can set
+          selected: true,
+        })));
+        setShowAddToInventoryPrompt(true);
+      }
+
       reset();
       setPendingAttachments([]);
       onOpenChange(false);
@@ -293,6 +309,20 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleAddPartsToInventory = async () => {
+    const partsToAdd = customPartsToAdd.filter(p => p.selected);
+    for (const part of partsToAdd) {
+      await addInventoryItem({
+        name: part.name,
+        unitCostCents: part.unitCostCents,
+        unitPriceCents: part.unitPriceCents,
+        quantity: part.quantity,
+      });
+    }
+    setShowAddToInventoryPrompt(false);
+    setCustomPartsToAdd([]);
   };
 
   const activeCustomers = customers
@@ -404,12 +434,12 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
               <label className="text-sm font-medium">Parts</label>
               {!isViewOnly && (
                 <div className="flex items-center gap-2">
-                  {availableInventoryItems.length > 0 && (
+                  {hasAnyInventoryItems && (
                     <select
                       className="input-field text-sm py-1 bg-card"
                       onChange={(e) => {
                         const item = inventoryItems.find(i => i.id === e.target.value);
-                        if (item) {
+                        if (item && item.quantity > 0) {
                           appendPart({
                             name: item.name,
                             quantity: 1,
@@ -424,9 +454,13 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
                       defaultValue=""
                     >
                       <option value="" disabled>Add from inventory...</option>
-                      {availableInventoryItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} (${(item.unitPriceCents / 100).toFixed(2)}) - {item.quantity} in stock
+                      {sortedInventoryItems.map((item) => (
+                        <option 
+                          key={item.id} 
+                          value={item.id}
+                          disabled={item.quantity <= 0}
+                        >
+                          {item.name} (${(item.unitPriceCents / 100).toFixed(2)}) - {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
                         </option>
                       ))}
                     </select>
@@ -1085,6 +1119,72 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           )}
         </form>
       </DialogContent>
+
+      {/* Add to Inventory Prompt Dialog */}
+      <Dialog open={showAddToInventoryPrompt} onOpenChange={setShowAddToInventoryPrompt}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Parts to Inventory?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-4">
+            You added custom parts to this job. Would you like to add them to your inventory for future use?
+          </p>
+          <div className="space-y-3 mb-4">
+            {customPartsToAdd.map((part, index) => (
+              <div key={index} className="flex items-start gap-3 p-3 bg-secondary/30 rounded-lg">
+                <input
+                  type="checkbox"
+                  checked={part.selected}
+                  onChange={(e) => {
+                    setCustomPartsToAdd(prev => prev.map((p, i) => 
+                      i === index ? { ...p, selected: e.target.checked } : p
+                    ));
+                  }}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{part.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Cost: ${(part.unitCostCents / 100).toFixed(2)} | Price: ${(part.unitPriceCents / 100).toFixed(2)}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="text-xs text-muted-foreground">Initial stock:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={part.quantity}
+                      onChange={(e) => {
+                        setCustomPartsToAdd(prev => prev.map((p, i) => 
+                          i === index ? { ...p, quantity: parseInt(e.target.value) || 0 } : p
+                        ));
+                      }}
+                      className="input-field w-20 text-sm py-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowAddToInventoryPrompt(false);
+                setCustomPartsToAdd([]);
+              }}
+              className="btn-secondary flex-1"
+            >
+              Skip
+            </button>
+            <button
+              onClick={handleAddPartsToInventory}
+              disabled={!customPartsToAdd.some(p => p.selected)}
+              className="btn-primary flex-1"
+            >
+              Add to Inventory
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
