@@ -45,11 +45,11 @@ export default function InvoiceDetail() {
     });
   };
 
-  const generateInvoiceHTML = (logoDataUrl: string) => {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <title>Invoice ${encodeHTML(invoice.invoiceNumber)}</title>
+  const generateInvoiceMarkup = (logoDataUrl: string) => {
+    // NOTE: This returns markup intended to be injected into a container <div>.
+    // Avoid wrapping with <html>/<head>/<body> because those tags won't behave
+    // correctly when inserted via innerHTML into a div.
+    return `
   <style>
     * {
       margin: 0;
@@ -198,8 +198,7 @@ export default function InvoiceDetail() {
       .no-print { display: none; }
     }
   </style>
-</head>
-<body>
+
   <div class="invoice-container">
     <div class="header">
       <div class="logo-section">
@@ -305,8 +304,21 @@ export default function InvoiceDetail() {
       <p style="margin-top: 8px;">${encodeHTML(settings?.companyName || "Tech & Electrical Services")}</p>
     </div>
   </div>
-</body>
-</html>`;
+`;
+  };
+
+  const waitForImages = async (root: HTMLElement) => {
+    const imgs = Array.from(root.querySelectorAll("img"));
+    await Promise.all(
+      imgs.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if ((img as HTMLImageElement).complete) return resolve();
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => resolve(), { once: true });
+          })
+      )
+    );
   };
 
   const convertImageToDataUrl = (imageSrc: string): Promise<string> => {
@@ -341,14 +353,26 @@ export default function InvoiceDetail() {
       const logoDataUrl = settings?.companyLogo 
         ? settings.companyLogo  // Already a data URL
         : await convertImageToDataUrl(logoSrc);
-      const html = generateInvoiceHTML(logoDataUrl);
+      const markup = generateInvoiceMarkup(logoDataUrl);
       
       // Create a temporary container to render the HTML
       container = document.createElement("div");
-      container.innerHTML = html;
-      container.style.position = "absolute";
-      container.style.left = "-9999px";
+      container.innerHTML = markup;
+      // Keep it in-document so html2canvas can compute layout, but invisible.
+      container.style.position = "fixed";
+      container.style.top = "0";
+      container.style.left = "0";
+      container.style.opacity = "0";
+      container.style.pointerEvents = "none";
+      container.style.zIndex = "-1";
+      container.style.width = "850px";
+      container.style.background = "white";
       document.body.appendChild(container);
+
+      // Ensure images are fully loaded before rendering to canvas/PDF
+      await waitForImages(container);
+      // Let the browser perform a layout pass
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
 
       const opt = {
         margin: 0,
@@ -358,7 +382,18 @@ export default function InvoiceDetail() {
         jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
       };
 
-      await html2pdf().set(opt).from(container).save();
+      // Generate blob + download (more reliable than .save() in some environments)
+      const pdfInstance = await html2pdf().set(opt).from(container).toPdf().get("pdf");
+      const pdfBlob = (pdfInstance as any).output("blob") as Blob;
+
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${invoice.invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       await logInfo(`Successfully generated PDF for invoice ${invoice.invoiceNumber}`, "InvoiceDetail");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

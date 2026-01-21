@@ -28,17 +28,17 @@ const encodeHTML = (str: string | undefined): string => {
   });
 };
 
-const generateInvoiceHTML = (
+const generateInvoiceMarkup = (
   invoice: Invoice,
   customer: Customer | undefined,
   job: Job | undefined,
   settings: AppSettings | null,
   logoDataUrl: string
 ) => {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <title>Invoice ${encodeHTML(invoice.invoiceNumber)}</title>
+  // NOTE: This returns markup intended to be injected into a container <div>.
+  // Avoid wrapping with <html>/<head>/<body> because those tags won't behave
+  // correctly when inserted via innerHTML into a div.
+  return `
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -108,8 +108,7 @@ const generateInvoiceHTML = (
       color: #666;
     }
   </style>
-</head>
-<body>
+
   <div class="invoice-container">
     <div class="header">
       <div class="logo-section">
@@ -215,8 +214,21 @@ const generateInvoiceHTML = (
       <p style="margin-top: 8px;">${encodeHTML(settings?.companyName || "Tech & Electrical Services")}</p>
     </div>
   </div>
-</body>
-</html>`;
+`;
+};
+
+const waitForImages = async (root: HTMLElement) => {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if ((img as HTMLImageElement).complete) return resolve();
+          img.addEventListener("load", () => resolve(), { once: true });
+          img.addEventListener("error", () => resolve(), { once: true });
+        })
+    )
+  );
 };
 
 export default function Invoices() {
@@ -298,15 +310,27 @@ export default function Invoices() {
   ): Promise<Blob> => {
     const customer = customers.find((c) => c.id === invoice.customerId);
     const job = jobs.find((j) => j.id === invoice.jobId);
-    const html = generateInvoiceHTML(invoice, customer, job, settings, logoDataUrl);
+    const markup = generateInvoiceMarkup(invoice, customer, job, settings, logoDataUrl);
 
     const container = document.createElement("div");
-    container.innerHTML = html;
-    container.style.position = "absolute";
-    container.style.left = "-9999px";
+    container.innerHTML = markup;
+    // Keep it in-document so html2canvas can compute layout, but invisible.
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.opacity = "0";
+    container.style.pointerEvents = "none";
+    container.style.zIndex = "-1";
+    container.style.width = "850px";
+    container.style.background = "white";
     document.body.appendChild(container);
 
     try {
+      // Ensure images are fully loaded before rendering to canvas/PDF
+      await waitForImages(container);
+      // Let the browser perform a layout pass
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+
       const opt = {
         margin: 0,
         filename: `${invoice.invoiceNumber}.pdf`,
