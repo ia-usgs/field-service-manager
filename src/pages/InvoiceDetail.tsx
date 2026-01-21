@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import html2pdf from "html2pdf.js";
+import { jsPDF } from "jspdf";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Mail, DollarSign } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -358,15 +358,15 @@ export default function InvoiceDetail() {
       // Create a temporary container to render the HTML
       container = document.createElement("div");
       container.innerHTML = markup;
-      // Keep it in-document so html2canvas can compute layout, but invisible.
+      // Keep it in-document so html2canvas can compute layout.
+      // IMPORTANT: Don't use opacity: 0 / visibility: hidden / display: none,
+      // because html2canvas will render it as transparent/blank.
       container.style.position = "fixed";
       container.style.top = "0";
-      container.style.left = "0";
-      container.style.opacity = "0";
-      container.style.pointerEvents = "none";
-      container.style.zIndex = "-1";
+      container.style.left = "-10000px";
       container.style.width = "850px";
       container.style.background = "white";
+      container.style.pointerEvents = "none";
       document.body.appendChild(container);
 
       // Ensure images are fully loaded before rendering to canvas/PDF
@@ -374,26 +374,120 @@ export default function InvoiceDetail() {
       // Let the browser perform a layout pass
       await new Promise((r) => requestAnimationFrame(() => r(null)));
 
-      const opt = {
-        margin: 0,
-        filename: `${invoice.invoiceNumber}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-      };
+      // Render using jsPDF directly (text-based) to avoid html2canvas/html2pdf blank output.
+      const doc = new jsPDF({ unit: "pt", format: "letter" });
+      const left = 40;
+      let y = 50;
 
-      // Generate blob + download (more reliable than .save() in some environments)
-      const pdfInstance = await html2pdf().set(opt).from(container).toPdf().get("pdf");
-      const pdfBlob = (pdfInstance as any).output("blob") as Blob;
+      // Header
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.text(settings?.companyName || "Tech & Electrical Services", left, y);
+      y += 18;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const companyLine = [settings?.companyAddress, settings?.companyPhone, settings?.companyEmail]
+        .filter(Boolean)
+        .join(" • ");
+      if (companyLine) {
+        doc.text(companyLine, left, y);
+        y += 14;
+      }
 
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${invoice.invoiceNumber}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      y += 10;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text(`INVOICE ${invoice.invoiceNumber}`, 400, 60);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Invoice Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}`, 400, 78);
+      doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 400, 92);
+
+      // Bill to
+      y = 120;
+      doc.setFont("helvetica", "bold");
+      doc.text("Bill To", left, y);
+      y += 14;
+      doc.setFont("helvetica", "normal");
+      const billToLines = [
+        customer?.name,
+        customer?.address,
+        customer?.email,
+        customer?.phone,
+      ].filter(Boolean) as string[];
+      billToLines.forEach((line) => {
+        doc.text(line, left, y);
+        y += 12;
+      });
+
+      // Line items
+      y = Math.max(y + 10, 200);
+      doc.setFont("helvetica", "bold");
+      doc.text("Description", left, y);
+      doc.text("Qty", 360, y);
+      doc.text("Amount", 520, y, { align: "right" });
+      y += 10;
+      doc.line(left, y, 560, y);
+      y += 18;
+      doc.setFont("helvetica", "normal");
+
+      const items: Array<{ desc: string; qty: string; amount: string }> = [];
+      if (invoice.laborTotalCents > 0) {
+        items.push({
+          desc: `Labor - ${job?.workPerformed || job?.problemDescription || "Service"}`,
+          qty: `${job?.laborHours || 0} hrs`,
+          amount: `$${centsToDollars(invoice.laborTotalCents)}`,
+        });
+      }
+      (job?.parts || []).forEach((p) => {
+        items.push({
+          desc: p.name,
+          qty: String(p.quantity),
+          amount: `$${centsToDollars(p.quantity * p.unitPriceCents)}`,
+        });
+      });
+      if (invoice.miscFeesCents > 0) {
+        items.push({
+          desc: job?.miscFeesDescription || "Miscellaneous Fees",
+          qty: "1",
+          amount: `$${centsToDollars(invoice.miscFeesCents)}`,
+        });
+      }
+
+      items.forEach((it) => {
+        // Basic pagination
+        if (y > 720) {
+          doc.addPage();
+          y = 60;
+        }
+        const descLines = doc.splitTextToSize(it.desc, 300);
+        doc.text(descLines, left, y);
+        doc.text(it.qty, 360, y);
+        doc.text(it.amount, 520, y, { align: "right" });
+        y += 14 + (descLines.length - 1) * 10;
+      });
+
+      // Totals
+      y += 10;
+      doc.setFont("helvetica", "bold");
+      doc.text(`Total: $${centsToDollars(invoice.totalCents)}`, 520, y, { align: "right" });
+      y += 14;
+      doc.setFont("helvetica", "normal");
+      if (invoice.paidAmountCents > 0) {
+        doc.text(`Paid: $${centsToDollars(invoice.paidAmountCents)}`, 520, y, { align: "right" });
+        y += 12;
+      }
+      if (invoice.paymentStatus !== "paid") {
+        doc.text(
+          `Balance Due: $${centsToDollars(invoice.totalCents - invoice.paidAmountCents)}`,
+          520,
+          y,
+          { align: "right" }
+        );
+      }
+
+      // Save
+      doc.save(`${invoice.invoiceNumber}.pdf`);
       await logInfo(`Successfully generated PDF for invoice ${invoice.invoiceNumber}`, "InvoiceDetail");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
