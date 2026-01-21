@@ -6,6 +6,7 @@ import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PaymentDialog } from "@/components/invoices/PaymentDialog";
 import { centsToDollars } from "@/lib/db";
+import { formatPhoneNumber } from "@/lib/utils";
 import { logError, logInfo } from "@/lib/errorLogger";
 import defaultLogo from "@/assets/logo.png";
 
@@ -207,7 +208,7 @@ export default function InvoiceDetail() {
           <div class="company-name">${encodeHTML(settings?.companyName || "Tech & Electrical Services")}</div>
           <div class="company-details">
             ${encodeHTML(settings?.companyAddress || "")}<br/>
-            ${encodeHTML(settings?.companyPhone || "")} • ${encodeHTML(settings?.companyEmail || "")}
+            ${encodeHTML(formatPhoneNumber(settings?.companyPhone))} • ${encodeHTML(settings?.companyEmail || "")}
           </div>
         </div>
       </div>
@@ -224,7 +225,7 @@ export default function InvoiceDetail() {
           <strong>${encodeHTML(customer?.name || "Customer")}</strong><br/>
           ${encodeHTML(customer?.address || "")}<br/>
           ${encodeHTML(customer?.email || "")}<br/>
-          ${encodeHTML(customer?.phone || "")}
+          ${encodeHTML(formatPhoneNumber(customer?.phone))}
         </p>
       </div>
       <div class="meta-section" style="text-align: right;">
@@ -394,7 +395,7 @@ export default function InvoiceDetail() {
       doc.text(settings?.companyName || "Tech & Electrical Services", companyX, 62);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      const companyLines = [settings?.companyAddress, [settings?.companyPhone, settings?.companyEmail].filter(Boolean).join(" • ")]
+      const companyLines = [settings?.companyAddress, [formatPhoneNumber(settings?.companyPhone), settings?.companyEmail].filter(Boolean).join(" • ")]
         .filter(Boolean) as string[];
       companyLines.forEach((line, idx) => {
         doc.text(line, companyX, 78 + idx * 12);
@@ -426,7 +427,7 @@ export default function InvoiceDetail() {
         customer?.name,
         customer?.address,
         customer?.email,
-        customer?.phone,
+        formatPhoneNumber(customer?.phone),
       ].filter(Boolean) as string[];
       billToLines.forEach((line) => {
         doc.text(line, left, y);
@@ -543,7 +544,7 @@ export default function InvoiceDetail() {
       `(The invoice file has been downloaded to your Downloads folder - please attach it to this email.)\n\n` +
       `Thank you for your business!\n\n` +
       `${settings?.companyName || "Tech & Electrical Services"}\n` +
-      `${settings?.companyPhone || ""}\n` +
+      `${formatPhoneNumber(settings?.companyPhone)}\n` +
       `${settings?.companyEmail || ""}`
     );
     window.location.href = `mailto:${customer?.email || ""}?subject=${subject}&body=${body}`;
@@ -629,7 +630,7 @@ export default function InvoiceDetail() {
                 {settings?.companyAddress}
               </p>
               <p className="text-sm text-gray-600">
-                {settings?.companyPhone} • {settings?.companyEmail}
+                {formatPhoneNumber(settings?.companyPhone)} • {settings?.companyEmail}
               </p>
             </div>
           </div>
@@ -646,7 +647,7 @@ export default function InvoiceDetail() {
             <p className="font-semibold text-gray-900">{customer?.name}</p>
             <p className="text-sm text-gray-600">{customer?.address}</p>
             <p className="text-sm text-gray-600">{customer?.email}</p>
-            <p className="text-sm text-gray-600">{customer?.phone}</p>
+            <p className="text-sm text-gray-600">{formatPhoneNumber(customer?.phone)}</p>
           </div>
           <div className="text-right">
             <h3 className="text-xs uppercase text-gray-500 mb-2">Invoice Details</h3>

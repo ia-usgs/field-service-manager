@@ -25,6 +25,7 @@ import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { JobDialog } from "@/components/jobs/JobDialog";
 import { ReminderDialog } from "@/components/reminders/ReminderDialog";
 import { centsToDollars } from "@/lib/db";
+import { formatPhoneNumber } from "@/lib/utils";
 import { getAttachmentUrl } from "@/lib/fileProcessing";
 import { Attachment } from "@/types";
 import {
@@ -146,7 +147,7 @@ export default function CustomerProfile() {
             {customer.phone && (
               <span className="flex items-center gap-1">
                 <Phone className="w-4 h-4" />
-                {customer.phone}
+                {formatPhoneNumber(customer.phone)}
               </span>
             )}
             {customer.address && (

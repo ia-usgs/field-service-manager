@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Trash2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Customer } from "@/types";
+import { formatPhoneNumber, formatPhoneInput } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +71,7 @@ export function CustomerDialog({
       reset({
         name: customer.name,
         email: customer.email || "",
-        phone: customer.phone || "",
+        phone: formatPhoneNumber(customer.phone),
         address: customer.address || "",
         notes: customer.notes || "",
         tags: customer.tags.join(", "),
@@ -86,6 +87,11 @@ export function CustomerDialog({
       });
     }
   }, [customer, reset, open]);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneInput(e.target.value);
+    e.target.value = formatted;
+  };
 
   const onSubmit = async (data: CustomerFormData) => {
     setIsSubmitting(true);
@@ -171,6 +177,10 @@ export function CustomerDialog({
               <label className="block text-sm font-medium mb-1">Phone</label>
               <input
                 {...register("phone")}
+                onChange={(e) => {
+                  handlePhoneChange(e);
+                  register("phone").onChange(e);
+                }}
                 className="input-field w-full"
                 placeholder="(555) 555-5555"
               />

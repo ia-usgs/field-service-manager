@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
 import { PaymentDialog } from "@/components/invoices/PaymentDialog";
 import { centsToDollars } from "@/lib/db";
+import { formatPhoneNumber } from "@/lib/utils";
 import { logError, logInfo } from "@/lib/errorLogger";
 import { Invoice, Customer, Job, AppSettings } from "@/types";
 import defaultLogo from "@/assets/logo.png";
@@ -112,7 +113,7 @@ export default function Invoices() {
     doc.setFontSize(10);
     const companyLines = [
       settings?.companyAddress,
-      [settings?.companyPhone, settings?.companyEmail].filter(Boolean).join(" • "),
+      [formatPhoneNumber(settings?.companyPhone), settings?.companyEmail].filter(Boolean).join(" • "),
     ].filter(Boolean) as string[];
     companyLines.forEach((line, idx) => {
       doc.text(line, companyX, 78 + idx * 12);
@@ -143,7 +144,7 @@ export default function Invoices() {
       customer?.name,
       customer?.address,
       customer?.email,
-      customer?.phone,
+      formatPhoneNumber(customer?.phone),
     ].filter(Boolean) as string[];
     billToLines.forEach((line) => {
       doc.text(line, left, y);
