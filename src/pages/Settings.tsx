@@ -7,6 +7,7 @@ import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
 import { toast } from "@/hooks/use-toast";
+import { formatPhoneNumber, formatPhoneInput } from "@/lib/utils";
 import defaultLogo from "@/assets/logo.png";
 
 const settingsSchema = z.object({
@@ -37,7 +38,7 @@ export default function Settings() {
       reset({
         companyName: settings.companyName,
         companyAddress: settings.companyAddress,
-        companyPhone: settings.companyPhone,
+        companyPhone: formatPhoneNumber(settings.companyPhone),
         companyEmail: settings.companyEmail,
         defaultLaborRate: settings.defaultLaborRateCents / 100,
         defaultTaxRate: settings.defaultTaxRate,
@@ -46,6 +47,10 @@ export default function Settings() {
       setLogoPreview(settings.companyLogo || null);
     }
   }, [settings, reset]);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.target.value = formatPhoneInput(e.target.value);
+  };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -260,7 +265,15 @@ export default function Settings() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Phone</label>
-              <input {...register("companyPhone")} className="input-field w-full" />
+              <input 
+                {...register("companyPhone")} 
+                onChange={(e) => {
+                  handlePhoneChange(e);
+                  register("companyPhone").onChange(e);
+                }}
+                placeholder="(555) 555-5555"
+                className="input-field w-full" 
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Email</label>

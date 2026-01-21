@@ -31,7 +31,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { centsToDollars } from "@/lib/db";
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO } from "date-fns";
-
+import { formatPhoneNumber } from "@/lib/utils";
 export default function Reports() {
   const { invoices, expenses, customers, jobs, payments } = useStore();
   const [dateRange, setDateRange] = useState<"3m" | "6m" | "12m" | "all">("12m");
@@ -332,7 +332,7 @@ export default function Reports() {
       return {
         name: customer.name,
         email: customer.email || "",
-        phone: customer.phone || "",
+        phone: formatPhoneNumber(customer.phone),
         address: customer.address || "",
         totalJobs: customerJobs.length,
         completedJobs: customerJobs.filter(j => ["completed", "invoiced", "paid"].includes(j.status)).length,

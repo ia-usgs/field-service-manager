@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
 import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { centsToDollars } from "@/lib/db";
+import { formatPhoneNumber } from "@/lib/utils";
 import { Customer } from "@/types";
 import { toast } from "@/hooks/use-toast";
 
@@ -139,7 +140,7 @@ export default function Customers() {
             {customer.phone && (
               <span className="flex items-center gap-1">
                 <Phone className="w-3 h-3" />
-                {customer.phone}
+                {formatPhoneNumber(customer.phone)}
               </span>
             )}
           </div>
