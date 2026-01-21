@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
-import { Download, TrendingUp, TrendingDown, Users, Briefcase, DollarSign, Calendar, Package, Clock } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Users, Briefcase, DollarSign, Calendar, Package, Clock, ChevronDown, FileSpreadsheet } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import {
   BarChart,
   Bar,
@@ -226,13 +234,18 @@ export default function Reports() {
     try {
       const headers = Object.keys(data[0]).join(",");
       const rows = data.map((row) => 
-        Object.values(row).map(val => 
-          typeof val === "string" && val.includes(",") ? `"${val}"` : String(val)
-        ).join(",")
+        Object.values(row).map(val => {
+          if (val === null || val === undefined) return "";
+          const str = String(val);
+          // Escape quotes and wrap in quotes if contains comma, quote, or newline
+          if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        }).join(",")
       ).join("\n");
       const csv = `${headers}\n${rows}`;
       
-      // Use data URI approach which works better in iframes/sandboxed environments
       const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
@@ -246,6 +259,164 @@ export default function Reports() {
       alert("Export failed. Please try again.");
     }
   };
+
+  // Comprehensive export data generators
+  const getInvoicesExportData = () => filteredInvoices.map(inv => {
+    const customer = customers.find(c => c.id === inv.customerId);
+    const job = jobs.find(j => j.id === inv.jobId);
+    return {
+      invoiceNumber: inv.invoiceNumber,
+      date: inv.invoiceDate,
+      dueDate: inv.dueDate,
+      customer: customer?.name || "Unknown",
+      customerEmail: customer?.email || "",
+      jobDescription: job?.problemDescription || "",
+      laborTotal: centsToDollars(inv.laborTotalCents),
+      partsTotal: centsToDollars(inv.partsTotalCents),
+      passThroughParts: centsToDollars(inv.passThroughPartsCents || 0),
+      miscFees: centsToDollars(inv.miscFeesCents),
+      subtotal: centsToDollars(inv.subtotalCents),
+      tax: centsToDollars(inv.taxCents),
+      total: centsToDollars(inv.totalCents),
+      paidAmount: centsToDollars(inv.paidAmountCents),
+      outstanding: centsToDollars(Math.max(0, inv.totalCents - inv.paidAmountCents)),
+      incomeAmount: centsToDollars(inv.incomeAmountCents || inv.totalCents),
+      status: inv.paymentStatus,
+    };
+  });
+
+  const getJobsExportData = () => filteredJobs.map(job => {
+    const customer = customers.find(c => c.id === job.customerId);
+    const laborTotal = job.laborHours * job.laborRateCents;
+    const partsTotal = (job.parts || []).reduce((sum, p) => sum + (p.quantity * p.unitPriceCents), 0);
+    const partsCost = (job.parts || []).reduce((sum, p) => p.source !== "customer-provided" ? sum + (p.quantity * p.unitCostCents) : sum, 0);
+    const partsProfit = (job.parts || []).reduce((sum, p) => p.source !== "customer-provided" ? sum + (p.quantity * (p.unitPriceCents - p.unitCostCents)) : sum, 0);
+    return {
+      dateOfService: job.dateOfService,
+      customer: customer?.name || "Unknown",
+      problemDescription: job.problemDescription,
+      workPerformed: job.workPerformed,
+      status: job.status,
+      laborHours: job.laborHours,
+      laborRate: centsToDollars(job.laborRateCents),
+      laborTotal: centsToDollars(laborTotal),
+      partsCount: (job.parts || []).length,
+      partsRevenue: centsToDollars(partsTotal),
+      partsCost: centsToDollars(partsCost),
+      partsProfit: centsToDollars(partsProfit),
+      miscFees: centsToDollars(job.miscFeesCents),
+      miscFeesDescription: job.miscFeesDescription || "",
+      taxRate: job.taxRate,
+      technicianNotes: job.technicianNotes || "",
+    };
+  });
+
+  const getExpensesExportData = () => filteredExpenses.map(exp => ({
+    date: exp.date,
+    category: exp.category,
+    description: exp.description,
+    vendor: exp.vendor || "",
+    amount: centsToDollars(exp.amountCents),
+    notes: exp.notes || "",
+  }));
+
+  const getCustomersExportData = () => {
+    return customers.filter(c => !c.archived).map(customer => {
+      const customerInvoices = filteredInvoices.filter(inv => inv.customerId === customer.id);
+      const customerJobs = filteredJobs.filter(j => j.customerId === customer.id);
+      const totalRevenue = customerInvoices.reduce((sum, inv) => {
+        const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
+        return sum + Math.round(inv.paidAmountCents * incomeRatio);
+      }, 0);
+      const outstandingAmount = customerInvoices.reduce((sum, inv) => sum + Math.max(0, inv.totalCents - inv.paidAmountCents), 0);
+      return {
+        name: customer.name,
+        email: customer.email || "",
+        phone: customer.phone || "",
+        address: customer.address || "",
+        totalJobs: customerJobs.length,
+        completedJobs: customerJobs.filter(j => ["completed", "invoiced", "paid"].includes(j.status)).length,
+        totalInvoices: customerInvoices.length,
+        totalRevenue: centsToDollars(totalRevenue),
+        outstanding: centsToDollars(outstandingAmount),
+        createdAt: customer.createdAt,
+      };
+    });
+  };
+
+  const getPaymentsExportData = () => {
+    return payments.filter(p => {
+      if (!dateFilter) return true;
+      return new Date(p.date) >= dateFilter;
+    }).map(payment => {
+      const invoice = invoices.find(inv => inv.id === payment.invoiceId);
+      const customer = invoice ? customers.find(c => c.id === invoice.customerId) : null;
+      return {
+        date: payment.date,
+        invoiceNumber: invoice?.invoiceNumber || "Unknown",
+        customer: customer?.name || "Unknown",
+        amount: centsToDollars(payment.amountCents),
+        type: payment.type,
+        method: payment.method,
+        notes: payment.notes || "",
+      };
+    });
+  };
+
+  const getMonthlyTrendsExportData = () => monthlyTrends.map(m => ({
+    month: m.month,
+    revenue: m.revenue.toFixed(2),
+    expenses: m.expenses.toFixed(2),
+    profit: m.profit.toFixed(2),
+    jobsCount: m.jobs,
+  }));
+
+  const getPartsExportData = () => {
+    const allParts: any[] = [];
+    filteredJobs.forEach(job => {
+      const customer = customers.find(c => c.id === job.customerId);
+      (job.parts || []).forEach(part => {
+        allParts.push({
+          jobDate: job.dateOfService,
+          customer: customer?.name || "Unknown",
+          jobDescription: job.problemDescription,
+          partName: part.name,
+          source: part.source,
+          quantity: part.quantity,
+          unitCost: centsToDollars(part.unitCostCents),
+          unitPrice: centsToDollars(part.unitPriceCents),
+          totalCost: centsToDollars(part.quantity * part.unitCostCents),
+          totalPrice: centsToDollars(part.quantity * part.unitPriceCents),
+          profit: part.source !== "customer-provided" 
+            ? centsToDollars(part.quantity * (part.unitPriceCents - part.unitCostCents)) 
+            : "0.00",
+        });
+      });
+    });
+    return allParts;
+  };
+
+  const getSummaryExportData = () => [{
+    dateRange: dateRange === "all" ? "All Time" : `Last ${dateRange.replace("m", " months")}`,
+    totalRevenue: centsToDollars(totalRevenue),
+    totalExpenses: centsToDollars(totalExpenses),
+    netProfit: centsToDollars(netProfit),
+    profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) + "%" : "0%",
+    totalJobs: filteredJobs.length,
+    completedJobs: completedJobsCount,
+    avgJobValue: centsToDollars(avgJobValue),
+    totalInvoices: filteredInvoices.length,
+    paidInvoices: filteredInvoices.filter(i => i.paymentStatus === "paid").length,
+    collectionRate: collectionRate.toFixed(1) + "%",
+    outstandingBalance: centsToDollars(outstandingBalance),
+    partsCost: centsToDollars(partsProfit.cost),
+    partsRevenue: centsToDollars(partsProfit.revenue),
+    partsProfit: centsToDollars(partsProfit.profit),
+    partsMargin: partsProfit.margin.toFixed(1) + "%",
+    laborRevenue: centsToDollars(revenueBreakdown.find(r => r.name === "Labor")?.value ? revenueBreakdown.find(r => r.name === "Labor")!.value * 100 : 0),
+    miscFeesRevenue: centsToDollars(revenueBreakdown.find(r => r.name === "Misc Fees")?.value ? revenueBreakdown.find(r => r.name === "Misc Fees")!.value * 100 : 0),
+    activeCustomers: customers.filter(c => !c.archived).length,
+  }];
 
   // Calculate totals
   const totalRevenue = filteredInvoices.reduce((sum, inv) => {
@@ -273,19 +444,53 @@ export default function Reports() {
               <option value="12m">Last 12 Months</option>
               <option value="all">All Time</option>
             </select>
-            <button
-              onClick={() => exportCSV(filteredInvoices.map(inv => ({
-                invoiceNumber: inv.invoiceNumber,
-                date: inv.invoiceDate,
-                total: centsToDollars(inv.totalCents),
-                paid: centsToDollars(inv.paidAmountCents),
-                status: inv.paymentStatus,
-              })), "invoices.csv")}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="btn-secondary flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Export
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Export Data</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => exportCSV(getSummaryExportData(), "summary.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Summary Report
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportCSV(getMonthlyTrendsExportData(), "monthly-trends.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Monthly Trends
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => exportCSV(getInvoicesExportData(), "invoices.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Invoices (Detailed)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportCSV(getJobsExportData(), "jobs.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Jobs (Detailed)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportCSV(getExpensesExportData(), "expenses.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Expenses
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportCSV(getPaymentsExportData(), "payments.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Payments
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => exportCSV(getCustomersExportData(), "customers.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Customers
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportCSV(getPartsExportData(), "parts.csv")}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Parts Used
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />
