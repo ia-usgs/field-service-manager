@@ -11,7 +11,7 @@ import { PaymentDialog } from "@/components/invoices/PaymentDialog";
 import { centsToDollars } from "@/lib/db";
 import { logError, logInfo } from "@/lib/errorLogger";
 import { Invoice, Customer, Job, AppSettings } from "@/types";
-import logo from "@/assets/logo.png";
+import defaultLogo from "@/assets/logo.png";
 
 // HTML-encode special characters to prevent XSS/injection in PDF generation
 const encodeHTML = (str: string | undefined): string => {
@@ -338,7 +338,11 @@ export default function Invoices() {
     try {
       await logInfo(`Starting batch PDF generation for ${selectedInvoices.length} invoices`, "Invoices");
       
-      const logoDataUrl = await convertImageToDataUrl(logo);
+      // Use custom logo from settings, or fall back to default
+      const logoSrc = settings?.companyLogo || defaultLogo;
+      const logoDataUrl = settings?.companyLogo 
+        ? settings.companyLogo  // Already a data URL
+        : await convertImageToDataUrl(logoSrc);
       const zip = new JSZip();
 
       for (const invoice of selectedInvoices) {

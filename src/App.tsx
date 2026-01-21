@@ -17,6 +17,7 @@ import Logs from "./pages/Logs";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { GitHubUpdateChecker } from "./components/GitHubUpdateChecker";
+import { DynamicFavicon } from "./components/DynamicFavicon";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <GitHubUpdateChecker />
+      <DynamicFavicon />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />
