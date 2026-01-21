@@ -51,6 +51,8 @@ export default defineConfig(({ mode }) => ({
         // Ensure the newest service worker takes control quickly (important for update flows)
         skipWaiting: true,
         clientsClaim: true,
+        // Allow caching of larger JS bundles (default is 2 MiB)
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // Never cache version.json; it must always reflect the currently deployed build
         runtimeCaching: [
           {
