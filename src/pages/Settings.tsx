@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Save, Download, Upload } from "lucide-react";
+import { Save, Download, Upload, ImagePlus, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
 import { toast } from "@/hooks/use-toast";
+import defaultLogo from "@/assets/logo.png";
 
 const settingsSchema = z.object({
   companyName: z.string().max(100),
@@ -24,6 +25,8 @@ export default function Settings() {
   const { settings, updateSettings, exportData, importData } = useStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { register, handleSubmit, reset } = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
@@ -40,8 +43,35 @@ export default function Settings() {
         defaultTaxRate: settings.defaultTaxRate,
         invoicePrefix: settings.invoicePrefix,
       });
+      setLogoPreview(settings.companyLogo || null);
     }
   }, [settings, reset]);
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 500 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Logo must be under 500KB",
+          variant: "destructive",
+        });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const onSubmit = async (data: SettingsFormData) => {
     await updateSettings({
@@ -52,6 +82,7 @@ export default function Settings() {
       defaultLaborRateCents: Math.round(data.defaultLaborRate * 100),
       defaultTaxRate: data.defaultTaxRate,
       invoicePrefix: data.invoicePrefix,
+      companyLogo: logoPreview || undefined,
     });
     toast({
       title: "Settings saved",
@@ -178,24 +209,67 @@ export default function Settings() {
 
       <div className="max-w-2xl space-y-6">
         <form onSubmit={handleSubmit(onSubmit)} className="bg-card border border-border rounded-lg p-6 space-y-4">
-          <h3 className="font-semibold">Company Information</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Company Name</label>
-              <input {...register("companyName")} className="input-field w-full" />
+          <h3 className="font-semibold">Company Branding</h3>
+          <div className="flex items-start gap-6">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/50 overflow-hidden">
+                <img 
+                  src={logoPreview || defaultLogo} 
+                  alt="Company logo" 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  <ImagePlus className="w-3 h-3" /> Change
+                </button>
+                {logoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="text-xs text-destructive hover:underline flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" /> Remove
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoChange}
+                className="hidden"
+              />
             </div>
+            <div className="flex-1 space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Company Name</label>
+                <input {...register("companyName")} className="input-field w-full" placeholder="Your Company Name" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This name and logo will appear in the sidebar and on invoices.
+              </p>
+            </div>
+          </div>
+
+          <h3 className="font-semibold pt-4">Contact Information</h3>
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Phone</label>
               <input {...register("companyPhone")} className="input-field w-full" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Email</label>
+              <input {...register("companyEmail")} type="email" className="input-field w-full" />
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Address</label>
             <input {...register("companyAddress")} className="input-field w-full" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <input {...register("companyEmail")} type="email" className="input-field w-full" />
           </div>
 
           <h3 className="font-semibold pt-4">Defaults</h3>
