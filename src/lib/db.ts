@@ -173,9 +173,13 @@ export async function initializeSettings(): Promise<AppSettings> {
   return settings;
 }
 
-// Helper to format cents to dollars
+// Helper to format cents to dollars with proper formatting (e.g., "1,234.56")
 export function centsToDollars(cents: number): string {
-  return (cents / 100).toFixed(2);
+  const dollars = cents / 100;
+  return dollars.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 // Helper to parse dollars to cents
