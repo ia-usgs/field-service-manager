@@ -14,7 +14,8 @@ import {
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logo from "@/assets/logo.png";
+import { useStore } from "@/store/useStore";
+import defaultLogo from "@/assets/logo.png";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -31,6 +32,16 @@ const navItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { settings } = useStore();
+
+  const companyName = settings?.companyName || "Tech & Electrical Services";
+  const companyLogo = settings?.companyLogo || defaultLogo;
+  
+  // Split company name for display (first line: main, second line: suffix if exists)
+  const nameParts = companyName.split(" ");
+  const displayName = nameParts.length > 2 
+    ? { main: nameParts.slice(0, -1).join(" "), suffix: nameParts[nameParts.length - 1] }
+    : { main: companyName, suffix: null };
 
   return (
     <aside
@@ -42,15 +53,17 @@ export function AppSidebar() {
       {/* Logo */}
       <div className="flex items-center h-16 px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <img src={logo} alt="Logo" className="w-8 h-8 object-contain rounded" />
+          <img src={companyLogo} alt="Logo" className="w-8 h-8 object-contain rounded" />
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="font-semibold text-sidebar-foreground text-sm">
-                Tech & Electrical
+            <div className="flex flex-col min-w-0">
+              <span className="font-semibold text-sidebar-foreground text-sm truncate">
+                {displayName.main}
               </span>
-              <span className="text-[10px] text-muted-foreground">
-                Services
-              </span>
+              {displayName.suffix && (
+                <span className="text-[10px] text-muted-foreground truncate">
+                  {displayName.suffix}
+                </span>
+              )}
             </div>
           )}
         </div>

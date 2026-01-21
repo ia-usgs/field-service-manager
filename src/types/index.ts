@@ -146,6 +146,7 @@ export interface AppSettings {
   companyAddress: string;
   companyPhone: string;
   companyEmail: string;
+  companyLogo?: string; // Base64 data URL for custom logo
 }
 
 export interface AuditLog {
