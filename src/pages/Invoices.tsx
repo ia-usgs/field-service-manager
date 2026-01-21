@@ -315,11 +315,14 @@ export default function Invoices() {
         jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
       };
 
-      const pdfBlob = await html2pdf()
+      // Use toPdf().get('pdf') to get the jsPDF instance, then output as blob
+      const pdfInstance = await html2pdf()
         .set(opt)
         .from(container)
-        .outputPdf("blob");
+        .toPdf()
+        .get("pdf");
       
+      const pdfBlob = (pdfInstance as any).output("blob");
       return pdfBlob as Blob;
     } finally {
       document.body.removeChild(container);
