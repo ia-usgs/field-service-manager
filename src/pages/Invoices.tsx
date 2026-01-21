@@ -314,15 +314,15 @@ export default function Invoices() {
 
     const container = document.createElement("div");
     container.innerHTML = markup;
-    // Keep it in-document so html2canvas can compute layout, but invisible.
+    // Keep it in-document so html2canvas can compute layout.
+    // IMPORTANT: Don't use opacity: 0 / visibility: hidden / display: none,
+    // because html2canvas will render it as transparent/blank.
     container.style.position = "fixed";
     container.style.top = "0";
-    container.style.left = "0";
-    container.style.opacity = "0";
-    container.style.pointerEvents = "none";
-    container.style.zIndex = "-1";
+    container.style.left = "-10000px";
     container.style.width = "850px";
     container.style.background = "white";
+    container.style.pointerEvents = "none";
     document.body.appendChild(container);
 
     try {
