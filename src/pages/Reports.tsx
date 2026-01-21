@@ -260,6 +260,9 @@ export default function Reports() {
     }
   };
 
+  // Helper to format cents as full dollar string for CSV exports
+  const formatDollar = (cents: number) => `$${centsToDollars(cents)}`;
+
   // Comprehensive export data generators
   const getInvoicesExportData = () => filteredInvoices.map(inv => {
     const customer = customers.find(c => c.id === inv.customerId);
@@ -271,16 +274,16 @@ export default function Reports() {
       customer: customer?.name || "Unknown",
       customerEmail: customer?.email || "",
       jobDescription: job?.problemDescription || "",
-      laborTotal: centsToDollars(inv.laborTotalCents),
-      partsTotal: centsToDollars(inv.partsTotalCents),
-      passThroughParts: centsToDollars(inv.passThroughPartsCents || 0),
-      miscFees: centsToDollars(inv.miscFeesCents),
-      subtotal: centsToDollars(inv.subtotalCents),
-      tax: centsToDollars(inv.taxCents),
-      total: centsToDollars(inv.totalCents),
-      paidAmount: centsToDollars(inv.paidAmountCents),
-      outstanding: centsToDollars(Math.max(0, inv.totalCents - inv.paidAmountCents)),
-      incomeAmount: centsToDollars(inv.incomeAmountCents || inv.totalCents),
+      laborTotal: formatDollar(inv.laborTotalCents),
+      partsTotal: formatDollar(inv.partsTotalCents),
+      passThroughParts: formatDollar(inv.passThroughPartsCents || 0),
+      miscFees: formatDollar(inv.miscFeesCents),
+      subtotal: formatDollar(inv.subtotalCents),
+      tax: formatDollar(inv.taxCents),
+      total: formatDollar(inv.totalCents),
+      paidAmount: formatDollar(inv.paidAmountCents),
+      outstanding: formatDollar(Math.max(0, inv.totalCents - inv.paidAmountCents)),
+      incomeAmount: formatDollar(inv.incomeAmountCents || inv.totalCents),
       status: inv.paymentStatus,
     };
   });
@@ -298,13 +301,13 @@ export default function Reports() {
       workPerformed: job.workPerformed,
       status: job.status,
       laborHours: job.laborHours,
-      laborRate: centsToDollars(job.laborRateCents),
-      laborTotal: centsToDollars(laborTotal),
+      laborRate: formatDollar(job.laborRateCents),
+      laborTotal: formatDollar(laborTotal),
       partsCount: (job.parts || []).length,
-      partsRevenue: centsToDollars(partsTotal),
-      partsCost: centsToDollars(partsCost),
-      partsProfit: centsToDollars(partsProfit),
-      miscFees: centsToDollars(job.miscFeesCents),
+      partsRevenue: formatDollar(partsTotal),
+      partsCost: formatDollar(partsCost),
+      partsProfit: formatDollar(partsProfit),
+      miscFees: formatDollar(job.miscFeesCents),
       miscFeesDescription: job.miscFeesDescription || "",
       taxRate: job.taxRate,
       technicianNotes: job.technicianNotes || "",
@@ -316,7 +319,7 @@ export default function Reports() {
     category: exp.category,
     description: exp.description,
     vendor: exp.vendor || "",
-    amount: centsToDollars(exp.amountCents),
+    amount: formatDollar(exp.amountCents),
     notes: exp.notes || "",
   }));
 
@@ -337,8 +340,8 @@ export default function Reports() {
         totalJobs: customerJobs.length,
         completedJobs: customerJobs.filter(j => ["completed", "invoiced", "paid"].includes(j.status)).length,
         totalInvoices: customerInvoices.length,
-        totalRevenue: centsToDollars(totalRevenue),
-        outstanding: centsToDollars(outstandingAmount),
+        totalRevenue: formatDollar(totalRevenue),
+        outstanding: formatDollar(outstandingAmount),
         createdAt: customer.createdAt,
       };
     });
@@ -355,7 +358,7 @@ export default function Reports() {
         date: payment.date,
         invoiceNumber: invoice?.invoiceNumber || "Unknown",
         customer: customer?.name || "Unknown",
-        amount: centsToDollars(payment.amountCents),
+        amount: formatDollar(payment.amountCents),
         type: payment.type,
         method: payment.method,
         notes: payment.notes || "",
@@ -365,9 +368,9 @@ export default function Reports() {
 
   const getMonthlyTrendsExportData = () => monthlyTrends.map(m => ({
     month: m.month,
-    revenue: m.revenue.toFixed(2),
-    expenses: m.expenses.toFixed(2),
-    profit: m.profit.toFixed(2),
+    revenue: `$${m.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    expenses: `$${m.expenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    profit: `$${m.profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     jobsCount: m.jobs,
   }));
 
@@ -383,13 +386,13 @@ export default function Reports() {
           partName: part.name,
           source: part.source,
           quantity: part.quantity,
-          unitCost: centsToDollars(part.unitCostCents),
-          unitPrice: centsToDollars(part.unitPriceCents),
-          totalCost: centsToDollars(part.quantity * part.unitCostCents),
-          totalPrice: centsToDollars(part.quantity * part.unitPriceCents),
+          unitCost: formatDollar(part.unitCostCents),
+          unitPrice: formatDollar(part.unitPriceCents),
+          totalCost: formatDollar(part.quantity * part.unitCostCents),
+          totalPrice: formatDollar(part.quantity * part.unitPriceCents),
           profit: part.source !== "customer-provided" 
-            ? centsToDollars(part.quantity * (part.unitPriceCents - part.unitCostCents)) 
-            : "0.00",
+            ? formatDollar(part.quantity * (part.unitPriceCents - part.unitCostCents)) 
+            : "$0.00",
         });
       });
     });
@@ -398,23 +401,23 @@ export default function Reports() {
 
   const getSummaryExportData = () => [{
     dateRange: dateRange === "all" ? "All Time" : `Last ${dateRange.replace("m", " months")}`,
-    totalRevenue: centsToDollars(totalRevenue),
-    totalExpenses: centsToDollars(totalExpenses),
-    netProfit: centsToDollars(netProfit),
+    totalRevenue: formatDollar(totalRevenue),
+    totalExpenses: formatDollar(totalExpenses),
+    netProfit: formatDollar(netProfit),
     profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) + "%" : "0%",
     totalJobs: filteredJobs.length,
     completedJobs: completedJobsCount,
-    avgJobValue: centsToDollars(avgJobValue),
+    avgJobValue: formatDollar(avgJobValue),
     totalInvoices: filteredInvoices.length,
     paidInvoices: filteredInvoices.filter(i => i.paymentStatus === "paid").length,
     collectionRate: collectionRate.toFixed(1) + "%",
-    outstandingBalance: centsToDollars(outstandingBalance),
-    partsCost: centsToDollars(partsProfit.cost),
-    partsRevenue: centsToDollars(partsProfit.revenue),
-    partsProfit: centsToDollars(partsProfit.profit),
+    outstandingBalance: formatDollar(outstandingBalance),
+    partsCost: formatDollar(partsProfit.cost),
+    partsRevenue: formatDollar(partsProfit.revenue),
+    partsProfit: formatDollar(partsProfit.profit),
     partsMargin: partsProfit.margin.toFixed(1) + "%",
-    laborRevenue: centsToDollars(revenueBreakdown.find(r => r.name === "Labor")?.value ? revenueBreakdown.find(r => r.name === "Labor")!.value * 100 : 0),
-    miscFeesRevenue: centsToDollars(revenueBreakdown.find(r => r.name === "Misc Fees")?.value ? revenueBreakdown.find(r => r.name === "Misc Fees")!.value * 100 : 0),
+    laborRevenue: `$${(revenueBreakdown.find(r => r.name === "Labor")?.value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    miscFeesRevenue: `$${(revenueBreakdown.find(r => r.name === "Misc Fees")?.value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     activeCustomers: customers.filter(c => !c.archived).length,
   }];
 
