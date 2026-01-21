@@ -377,34 +377,47 @@ export default function InvoiceDetail() {
       // Render using jsPDF directly (text-based) to avoid html2canvas/html2pdf blank output.
       const doc = new jsPDF({ unit: "pt", format: "letter" });
       const left = 40;
-      let y = 50;
+      const right = 572; // ~ letter width (612) - margin (40)
 
-      // Header
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(18);
-      doc.text(settings?.companyName || "Tech & Electrical Services", left, y);
-      y += 18;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      const companyLine = [settings?.companyAddress, settings?.companyPhone, settings?.companyEmail]
-        .filter(Boolean)
-        .join(" • ");
-      if (companyLine) {
-        doc.text(companyLine, left, y);
-        y += 14;
+      // Header (match in-app layout: logo + company left, invoice title right)
+      // Logo
+      try {
+        doc.addImage(logoDataUrl, "PNG", left, 40, 56, 56);
+      } catch {
+        // If logo fails to parse for any reason, continue without it.
       }
 
-      y += 10;
+      // Company block
+      const companyX = left + 72;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.text(`INVOICE ${invoice.invoiceNumber}`, 400, 60);
+      doc.setFontSize(18);
+      doc.text(settings?.companyName || "Tech & Electrical Services", companyX, 62);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(`Invoice Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}`, 400, 78);
-      doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 400, 92);
+      const companyLines = [settings?.companyAddress, [settings?.companyPhone, settings?.companyEmail].filter(Boolean).join(" • ")]
+        .filter(Boolean) as string[];
+      companyLines.forEach((line, idx) => {
+        doc.text(line, companyX, 78 + idx * 12);
+      });
+
+      // Invoice block
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("INVOICE", right, 62, { align: "right" });
+      doc.setFontSize(12);
+      doc.text(invoice.invoiceNumber, right, 82, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}`, right, 98, { align: "right" });
+      doc.text(`Due: ${new Date(invoice.dueDate).toLocaleDateString()}`, right, 112, { align: "right" });
+
+      // Divider
+      doc.setDrawColor(220);
+      doc.setLineWidth(1);
+      doc.line(left, 130, right, 130);
 
       // Bill to
-      y = 120;
+      let y = 155;
       doc.setFont("helvetica", "bold");
       doc.text("Bill To", left, y);
       y += 14;
@@ -421,15 +434,19 @@ export default function InvoiceDetail() {
       });
 
       // Line items
-      y = Math.max(y + 10, 200);
+      y = Math.max(y + 18, 250);
       doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
       doc.text("Description", left, y);
-      doc.text("Qty", 360, y);
-      doc.text("Amount", 520, y, { align: "right" });
-      y += 10;
-      doc.line(left, y, 560, y);
+      doc.text("Qty", 420, y);
+      doc.text("Amount", right, y, { align: "right" });
+      y += 8;
+      doc.setDrawColor(40);
+      doc.setLineWidth(1.2);
+      doc.line(left, y, right, y);
       y += 18;
       doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
 
       const items: Array<{ desc: string; qty: string; amount: string }> = [];
       if (invoice.laborTotalCents > 0) {
@@ -456,34 +473,44 @@ export default function InvoiceDetail() {
 
       items.forEach((it) => {
         // Basic pagination
-        if (y > 720) {
+        if (y > 740) {
           doc.addPage();
           y = 60;
         }
-        const descLines = doc.splitTextToSize(it.desc, 300);
+        const descLines = doc.splitTextToSize(it.desc, 360);
         doc.text(descLines, left, y);
-        doc.text(it.qty, 360, y);
-        doc.text(it.amount, 520, y, { align: "right" });
+        doc.text(it.qty, 420, y);
+        doc.text(it.amount, right, y, { align: "right" });
         y += 14 + (descLines.length - 1) * 10;
       });
 
-      // Totals
-      y += 10;
+      // Totals (right-aligned block)
+      y += 16;
+      const totalsX = right;
+      doc.setDrawColor(40);
+      doc.setLineWidth(1);
+      doc.line(360, y, right, y);
+      y += 18;
+
       doc.setFont("helvetica", "bold");
-      doc.text(`Total: $${centsToDollars(invoice.totalCents)}`, 520, y, { align: "right" });
-      y += 14;
+      doc.setFontSize(14);
+      doc.text(`Total  $${centsToDollars(invoice.totalCents)}`, totalsX, y, { align: "right" });
+      y += 16;
       doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
       if (invoice.paidAmountCents > 0) {
-        doc.text(`Paid: $${centsToDollars(invoice.paidAmountCents)}`, 520, y, { align: "right" });
+        doc.text(`Paid  $${centsToDollars(invoice.paidAmountCents)}`, totalsX, y, { align: "right" });
         y += 12;
       }
       if (invoice.paymentStatus !== "paid") {
+        doc.setFont("helvetica", "bold");
         doc.text(
-          `Balance Due: $${centsToDollars(invoice.totalCents - invoice.paidAmountCents)}`,
-          520,
+          `Balance Due  $${centsToDollars(invoice.totalCents - invoice.paidAmountCents)}`,
+          totalsX,
           y,
           { align: "right" }
         );
+        doc.setFont("helvetica", "normal");
       }
 
       // Save
