@@ -7,7 +7,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { PaymentDialog } from "@/components/invoices/PaymentDialog";
 import { centsToDollars } from "@/lib/db";
 import { logError, logInfo } from "@/lib/errorLogger";
-import logo from "@/assets/logo.png";
+import defaultLogo from "@/assets/logo.png";
 
 export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -336,8 +336,11 @@ export default function InvoiceDetail() {
     try {
       await logInfo(`Starting PDF generation for invoice ${invoice.invoiceNumber}`, "InvoiceDetail");
       
-      // Convert logo to data URL for embedding in PDF
-      const logoDataUrl = await convertImageToDataUrl(logo);
+      // Use custom logo from settings, or fall back to default
+      const logoSrc = settings?.companyLogo || defaultLogo;
+      const logoDataUrl = settings?.companyLogo 
+        ? settings.companyLogo  // Already a data URL
+        : await convertImageToDataUrl(logoSrc);
       const html = generateInvoiceHTML(logoDataUrl);
       
       // Create a temporary container to render the HTML
@@ -461,7 +464,7 @@ export default function InvoiceDetail() {
         {/* Header */}
         <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-200">
           <div className="flex items-center gap-4">
-            <img src={logo} alt="Company Logo" className="w-20 h-20 object-contain" />
+            <img src={settings?.companyLogo || defaultLogo} alt="Company Logo" className="w-20 h-20 object-contain" />
             <div>
               <h2 className="text-2xl font-bold text-gray-900">
                 {settings?.companyName || "Tech & Electrical Services"}
