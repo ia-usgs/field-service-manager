@@ -192,13 +192,8 @@ JOB STATUS BREAKDOWN:
 MONTHLY TRENDS (Last 6 Months):
 ${monthlyTrends.map(m => `- ${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.profit)}`).join('\n')}
 
-TOP 5 CUSTOMERS BY REVENUE (highest):
-${topCustomers.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
-
-BOTTOM 5 CUSTOMERS BY REVENUE (lowest):
-${bottomCustomers.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
-
-TOTAL CUSTOMERS WITH REVENUE: ${allCustomersByRevenue.length}
+ALL CUSTOMERS BY REVENUE (sorted highest to lowest):
+${allCustomersByRevenue.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
 
 TOP 5 EXPENSE CATEGORIES:
 ${topExpenseCategories.map(([cat, amt]) => `- ${cat}: ${centsToDollars(amt)}`).join('\n') || 'No expenses yet'}
