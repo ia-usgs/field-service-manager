@@ -1,11 +1,18 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, Trash2 } from "lucide-react";
+import { Send, Bot, User, Loader2, Trash2, ChevronDown } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
 import { useStore } from "@/store/useStore";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { centsToDollars } from "@/lib/db";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Message {
   id: string;
@@ -14,10 +21,18 @@ interface Message {
   timestamp: Date;
 }
 
+const GROQ_MODELS = [
+  { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Fast)", description: "~30k TPM, fastest" },
+  { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B", description: "~12k TPM, smartest" },
+  { id: "gemma2-9b-it", name: "Gemma 2 9B", description: "~15k TPM, balanced" },
+  { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", description: "~5k TPM, 32k context" },
+];
+
 export default function AIAssistant() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("llama-3.1-8b-instant");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { settings, customers, jobs, invoices, expenses, inventoryItems, payments, reminders, attachments, auditLogs } = useStore();
 
@@ -156,7 +171,7 @@ ${jobsList.join('\n')}
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
+          model: selectedModel,
           messages: [
             { role: "system", content: buildContext() },
             ...messages.map(m => ({ role: m.role, content: m.content })),
@@ -200,19 +215,36 @@ ${jobsList.join('\n')}
   return (
     <AppLayout>
       <div className="flex flex-col h-[calc(100vh-6rem)]">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-4">
           <PageHeader 
             title="AI Assistant" 
             description="Ask questions about your business data" 
           />
-          {messages.length > 0 && (
-            <button
-              onClick={clearChat}
-              className="btn-secondary flex items-center gap-2 text-sm"
-            >
-              <Trash2 className="w-4 h-4" /> Clear Chat
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <SelectTrigger className="w-[200px] bg-card">
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border border-border z-50">
+                {GROQ_MODELS.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    <div className="flex flex-col">
+                      <span>{model.name}</span>
+                      <span className="text-xs text-muted-foreground">{model.description}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {messages.length > 0 && (
+              <button
+                onClick={clearChat}
+                className="btn-secondary flex items-center gap-2 text-sm"
+              >
+                <Trash2 className="w-4 h-4" /> Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {!settings?.groqApiKey && (
