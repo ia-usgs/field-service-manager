@@ -67,43 +67,37 @@ export default function AIAssistant() {
       });
     }
 
-    // Build the full data export (similar to Settings export but from state)
+    // Build compact data (limit records to stay within token limits)
     const fullData = {
-      customers: customers.map(c => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, notes: c.notes, tags: c.tags, archived: c.archived })),
+      customers: customers.slice(0, 100).map(c => ({ name: c.name, email: c.email, phone: c.phone, archived: c.archived })),
       jobs: jobs.map(j => {
         const customer = customers.find(c => c.id === j.customerId);
+        const totalCents = (j.laborHours * j.laborRateCents) + j.parts.reduce((sum, p) => sum + (p.unitPriceCents * p.quantity), 0) + j.miscFeesCents;
         return {
-          id: j.id,
           customer: customer?.name || 'Unknown',
-          dateOfService: j.dateOfService,
-          problemDescription: j.problemDescription,
-          workPerformed: j.workPerformed,
-          laborHours: j.laborHours,
-          laborRateCents: j.laborRateCents,
-          parts: j.parts,
+          date: j.dateOfService,
+          description: j.problemDescription.substring(0, 60),
+          totalCents,
           status: j.status,
         };
       }),
       invoices: invoices.map(inv => {
         const customer = customers.find(c => c.id === inv.customerId);
         return {
-          invoiceNumber: inv.invoiceNumber,
+          number: inv.invoiceNumber,
           customer: customer?.name || 'Unknown',
-          invoiceDate: inv.invoiceDate,
           totalCents: inv.totalCents,
-          incomeAmountCents: inv.incomeAmountCents,
-          paidAmountCents: inv.paidAmountCents,
-          paymentStatus: inv.paymentStatus,
-          paymentDate: inv.paymentDate,
+          incomeCents: inv.incomeAmountCents,
+          paidCents: inv.paidAmountCents,
+          status: inv.paymentStatus,
         };
       }),
-      expenses: expenses.map(e => ({ date: e.date, vendor: e.vendor, category: e.category, description: e.description, amountCents: e.amountCents })),
-      payments: payments.map(p => ({ invoiceId: p.invoiceId, amountCents: p.amountCents, type: p.type, method: p.method, date: p.date })),
-      reminders: reminders.map(r => {
+      expenses: expenses.slice(0, 50).map(e => ({ date: e.date, category: e.category, amountCents: e.amountCents })),
+      reminders: reminders.filter(r => !r.completed).slice(0, 20).map(r => {
         const customer = customers.find(c => c.id === r.customerId);
-        return { title: r.title, customer: customer?.name || 'Unknown', dueDate: r.dueDate, completed: r.completed, type: r.type };
+        return { title: r.title, customer: customer?.name || 'Unknown', dueDate: r.dueDate };
       }),
-      inventory: inventoryItems.map(i => ({ name: i.name, sku: i.sku, quantity: i.quantity, unitCostCents: i.unitCostCents, unitPriceCents: i.unitPriceCents, reorderLevel: i.reorderLevel })),
+      inventory: inventoryItems.map(i => ({ name: i.name, qty: i.quantity, priceCents: i.unitPriceCents })),
     };
 
     return `
