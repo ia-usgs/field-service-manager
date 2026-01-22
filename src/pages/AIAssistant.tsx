@@ -79,69 +79,47 @@ export default function AIAssistant() {
       .map(([name, cents]) => ({ name, revenue: centsToDollars(cents) }))
       .sort((a, b) => parseFloat(b.revenue.replace(/[$,]/g, '')) - parseFloat(a.revenue.replace(/[$,]/g, '')));
 
-    // Build compact data with FORMATTED dollar values (not cents)
-    const fullData = {
-      customers: customers.slice(0, 100).map(c => ({ name: c.name, email: c.email, phone: c.phone, archived: c.archived })),
-      jobs: jobs.map(j => {
-        const customer = customers.find(c => c.id === j.customerId);
-        const totalCents = (j.laborHours * j.laborRateCents) + j.parts.reduce((sum, p) => sum + (p.unitPriceCents * p.quantity), 0) + j.miscFeesCents;
-        return {
-          customer: customer?.name || 'Unknown',
-          date: j.dateOfService,
-          description: j.problemDescription.substring(0, 60),
-          total: centsToDollars(totalCents),
-          status: j.status,
-        };
-      }),
-      invoices: invoices.map(inv => {
+    // Build COMPACT data strings (no JSON, minimal tokens)
+    const unpaidInvoicesList = invoices
+      .filter(inv => inv.paymentStatus !== 'paid')
+      .map(inv => {
         const customer = customers.find(c => c.id === inv.customerId);
-        return {
-          number: inv.invoiceNumber,
-          customer: customer?.name || 'Unknown',
-          total: centsToDollars(inv.totalCents),
-          income: centsToDollars(inv.incomeAmountCents),
-          paid: centsToDollars(inv.paidAmountCents),
-          status: inv.paymentStatus,
-        };
-      }),
-      expenses: expenses.slice(0, 50).map(e => ({ date: e.date, category: e.category, amount: centsToDollars(e.amountCents) })),
-      reminders: reminders.filter(r => !r.completed).slice(0, 20).map(r => {
-        const customer = customers.find(c => c.id === r.customerId);
-        return { title: r.title, customer: customer?.name || 'Unknown', dueDate: r.dueDate };
-      }),
-      inventory: inventoryItems.map(i => ({ name: i.name, qty: i.quantity, price: centsToDollars(i.unitPriceCents) })),
-    };
+        const owed = inv.totalCents - inv.paidAmountCents;
+        return `${customer?.name || 'Unknown'}: ${centsToDollars(owed)} (Invoice #${inv.invoiceNumber})`;
+      });
+
+    const jobsList = jobs.slice(-30).map(j => {
+      const customer = customers.find(c => c.id === j.customerId);
+      const totalCents = (j.laborHours * j.laborRateCents) + j.parts.reduce((sum, p) => sum + (p.unitPriceCents * p.quantity), 0) + j.miscFeesCents;
+      return `${customer?.name || 'Unknown'} | ${j.dateOfService} | ${centsToDollars(totalCents)} | ${j.status}`;
+    });
+
+    const lowStockItems = inventoryItems.filter(i => i.reorderLevel && i.quantity <= i.reorderLevel);
 
     return `
 You are an AI assistant for a service business management app. Today is ${now.toLocaleDateString()} (${monthName}).
-
-CRITICAL: All dollar amounts below are ALREADY FORMATTED. Use them exactly as shown - do NOT recalculate anything.
+Use the pre-formatted dollar amounts exactly as shown.
 
 === FINANCIAL SUMMARY ===
-- Total Lifetime Revenue: ${centsToDollars(totalRevenue)}
-- Revenue This Month (${monthName}): ${centsToDollars(thisMonthRevenue)}
-- Revenue Today: ${centsToDollars(todayRevenue)}
-- Outstanding Amount: ${centsToDollars(outstandingAmount)}
-- Total Expenses: ${centsToDollars(totalExpenses)}
-- Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
+Total Revenue: ${centsToDollars(totalRevenue)} | This Month: ${centsToDollars(thisMonthRevenue)} | Today: ${centsToDollars(todayRevenue)}
+Outstanding: ${centsToDollars(outstandingAmount)} | Expenses: ${centsToDollars(totalExpenses)} | Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
 
-=== REVENUE BY CUSTOMER (sorted highest to lowest) ===
-${customerRevenueList.map((c, i) => `${i + 1}. ${c.name}: ${c.revenue}`).join('\n') || 'No customer revenue data'}
+=== REVENUE BY CUSTOMER (highest to lowest) ===
+${customerRevenueList.map((c, i) => `${i + 1}. ${c.name}: ${c.revenue}`).join('\n') || 'No data'}
 
-=== MONTHLY TRENDS (Last 6 Months) ===
-${monthlyTrends.map(m => `${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.revenue - m.expenses)}`).join('\n')}
+=== UNPAID INVOICES ===
+${unpaidInvoicesList.join('\n') || 'None'}
 
-=== QUICK STATS ===
-- Total Customers: ${customers.length}
-- Total Jobs: ${jobs.length} (Quoted: ${jobs.filter(j => j.status === 'quoted').length}, In Progress: ${jobs.filter(j => j.status === 'in-progress').length}, Completed: ${jobs.filter(j => j.status === 'completed').length}, Invoiced: ${jobs.filter(j => j.status === 'invoiced').length}, Paid: ${jobs.filter(j => j.status === 'paid').length})
-- Total Invoices: ${invoices.length}
-- Pending Reminders: ${reminders.filter(r => !r.completed).length}
-- Inventory Items: ${inventoryItems.length}
+=== MONTHLY TRENDS ===
+${monthlyTrends.map(m => `${m.month}: Rev ${centsToDollars(m.revenue)}, Exp ${centsToDollars(m.expenses)}`).join(' | ')}
 
-=== DETAILED DATA (all amounts are formatted as dollars) ===
-${JSON.stringify(fullData, null, 2)}
+=== STATS ===
+Customers: ${customers.length} | Jobs: ${jobs.length} | Invoices: ${invoices.length} | Reminders: ${reminders.filter(r => !r.completed).length} pending
+Low Stock: ${lowStockItems.length > 0 ? lowStockItems.map(i => `${i.name} (${i.quantity} left)`).join(', ') : 'None'}
 
-Use the pre-formatted dollar amounts exactly as shown. Be concise and helpful.
+=== RECENT JOBS (last 30) ===
+Customer | Date | Total | Status
+${jobsList.join('\n')}
 `;
   };
 
