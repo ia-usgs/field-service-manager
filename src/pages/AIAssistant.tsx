@@ -19,7 +19,7 @@ export default function AIAssistant() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { settings, customers, jobs, invoices, expenses, inventoryItems } = useStore();
+  const { settings, customers, jobs, invoices, expenses, inventoryItems, payments, reminders, attachments, auditLogs } = useStore();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -166,6 +166,20 @@ BUSINESS METRICS:
 - Active Jobs: ${activeJobs.length}
 - Total Jobs: ${jobs.length}
 - Total Invoices: ${invoices.length}
+- Total Payments Recorded: ${payments.length}
+- Total Refunds: ${payments.filter(p => p.type === 'refund').length}
+- Total Attachments: ${attachments.length}
+
+REMINDERS:
+- Total Reminders: ${reminders.length}
+- Pending Reminders: ${reminders.filter(r => !r.completed).length}
+- Overdue Reminders: ${reminders.filter(r => !r.completed && new Date(r.dueDate) < now).length}
+- Upcoming (next 7 days): ${reminders.filter(r => {
+  if (r.completed) return false;
+  const due = new Date(r.dueDate);
+  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return due >= now && due <= weekFromNow;
+}).length}
 
 JOB STATUS BREAKDOWN:
 - Quoted: ${jobsByStatus.quoted}
@@ -183,6 +197,13 @@ ${topCustomers.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`
 TOP 5 EXPENSE CATEGORIES:
 ${topExpenseCategories.map(([cat, amt]) => `- ${cat}: ${centsToDollars(amt)}`).join('\n') || 'No expenses yet'}
 
+INVENTORY CATALOG (${inventoryItems.length} items):
+${inventoryItems.slice(0, 10).map(item => `- ${item.name}: ${item.quantity} in stock, sells at ${centsToDollars(item.unitPriceCents)}`).join('\n') || 'No inventory items'}
+${inventoryItems.length > 10 ? `... and ${inventoryItems.length - 10} more items` : ''}
+
+LOW STOCK ITEMS:
+${lowStockItems.map(item => `- ${item.name}: ${item.quantity} left (reorder at ${item.reorderLevel})`).join('\n') || 'None'}
+
 RECENT JOBS (last 10):
 ${jobs.slice(-10).map(j => {
   const customer = customers.find(c => c.id === j.customerId);
@@ -195,10 +216,16 @@ ${invoices.filter(inv => inv.paymentStatus !== 'paid').slice(0, 5).map(inv => {
   return `- Invoice #${inv.invoiceNumber} for ${customer?.name || 'Unknown'}: ${centsToDollars(inv.totalCents - inv.paidAmountCents)} outstanding`;
 }).join('\n')}
 
-LOW STOCK ITEMS:
-${lowStockItems.map(item => `- ${item.name}: ${item.quantity} left (reorder at ${item.reorderLevel})`).join('\n') || 'None'}
+UPCOMING REMINDERS:
+${reminders.filter(r => !r.completed).slice(0, 5).map(r => {
+  const customer = customers.find(c => c.id === r.customerId);
+  return `- ${r.title} for ${customer?.name || 'Unknown'} - Due: ${new Date(r.dueDate).toLocaleDateString()}`;
+}).join('\n') || 'No pending reminders'}
 
-Answer questions about trends, comparisons, reports, and business metrics using ONLY the provided summary values. Be concise and helpful.
+RECENT ACTIVITY (last 10 actions):
+${auditLogs.slice(-10).reverse().map(log => `- ${log.action} ${log.entityType}: ${log.details.substring(0, 40)}...`).join('\n') || 'No recent activity'}
+
+Answer questions about trends, comparisons, reports, reminders, inventory, payments, and all business metrics using ONLY the provided summary values. Be concise and helpful.
 `;
   };
 
