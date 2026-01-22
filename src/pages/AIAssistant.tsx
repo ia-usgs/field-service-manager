@@ -64,6 +64,82 @@ export default function AIAssistant() {
     
     const monthName = now.toLocaleString('default', { month: 'long' });
 
+    // Build monthly trends for last 6 months
+    const monthlyTrends: { month: string; revenue: number; expenses: number; profit: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const monthLabel = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+      
+      const monthRevenue = invoices
+        .filter(inv => inv.paymentDate?.startsWith(monthKey))
+        .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
+      
+      const monthExpenses = expenses
+        .filter(exp => exp.date.startsWith(monthKey))
+        .reduce((sum, exp) => sum + exp.amountCents, 0);
+      
+      monthlyTrends.push({
+        month: monthLabel,
+        revenue: monthRevenue,
+        expenses: monthExpenses,
+        profit: monthRevenue - monthExpenses,
+      });
+    }
+
+    // Expense breakdown by category
+    const expensesByCategory: Record<string, number> = {};
+    expenses.forEach(exp => {
+      expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + exp.amountCents;
+    });
+    const topExpenseCategories = Object.entries(expensesByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    // Revenue by customer (top 5)
+    const revenueByCustomer: Record<string, { name: string; revenue: number }> = {};
+    invoices.forEach(inv => {
+      const customer = customers.find(c => c.id === inv.customerId);
+      if (customer) {
+        if (!revenueByCustomer[inv.customerId]) {
+          revenueByCustomer[inv.customerId] = { name: customer.name, revenue: 0 };
+        }
+        revenueByCustomer[inv.customerId].revenue += getIncomeFromInvoice(inv);
+      }
+    });
+    const topCustomers = Object.values(revenueByCustomer)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    // Job status breakdown
+    const jobsByStatus = {
+      quoted: jobs.filter(j => j.status === 'quoted').length,
+      inProgress: jobs.filter(j => j.status === 'in-progress').length,
+      completed: jobs.filter(j => j.status === 'completed').length,
+      invoiced: jobs.filter(j => j.status === 'invoiced').length,
+      paid: jobs.filter(j => j.status === 'paid').length,
+    };
+
+    // Parts profit calculation
+    const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
+    let partsCost = 0;
+    let partsRevenue = 0;
+    completedJobs.forEach(job => {
+      job.parts?.forEach(part => {
+        if (part.source === 'inventory') {
+          partsCost += (part.unitCostCents || 0) * part.quantity;
+          partsRevenue += part.unitPriceCents * part.quantity;
+        }
+      });
+    });
+    const partsProfit = partsRevenue - partsCost;
+    const partsMargin = partsRevenue > 0 ? ((partsProfit / partsRevenue) * 100).toFixed(1) : '0';
+
+    // Collection rate
+    const totalBilled = invoices.reduce((sum, inv) => sum + inv.totalCents, 0);
+    const totalCollected = invoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
+    const collectionRate = totalBilled > 0 ? ((totalCollected / totalBilled) * 100).toFixed(1) : '100';
+
     return `
 You are an AI assistant for a service business management app. Today is ${now.toLocaleDateString()}.
 
@@ -76,17 +152,36 @@ FINANCIAL SUMMARY (use these exact values):
 - Outstanding Amount: ${centsToDollars(outstandingAmount)} (unpaid invoices)
 - Total Expenses: ${centsToDollars(totalExpenses)}
 - Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
+- Collection Rate: ${collectionRate}%
+
+PARTS & INVENTORY METRICS:
+- Parts Revenue: ${centsToDollars(partsRevenue)}
+- Parts Cost: ${centsToDollars(partsCost)}
+- Parts Profit: ${centsToDollars(partsProfit)}
+- Parts Margin: ${partsMargin}%
+- Low Stock Items: ${lowStockItems.length}
 
 BUSINESS METRICS:
 - Total Customers: ${customers.length}
 - Active Jobs: ${activeJobs.length}
 - Total Jobs: ${jobs.length}
 - Total Invoices: ${invoices.length}
-- Low Stock Items: ${lowStockItems.length}
 
-CUSTOMERS (${customers.length}):
-${customers.slice(0, 10).map(c => `- ${c.name} (${c.email}, ${c.phone})`).join('\n')}
-${customers.length > 10 ? `... and ${customers.length - 10} more` : ''}
+JOB STATUS BREAKDOWN:
+- Quoted: ${jobsByStatus.quoted}
+- In Progress: ${jobsByStatus.inProgress}
+- Completed: ${jobsByStatus.completed}
+- Invoiced: ${jobsByStatus.invoiced}
+- Paid: ${jobsByStatus.paid}
+
+MONTHLY TRENDS (Last 6 Months):
+${monthlyTrends.map(m => `- ${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.profit)}`).join('\n')}
+
+TOP 5 CUSTOMERS BY REVENUE:
+${topCustomers.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
+
+TOP 5 EXPENSE CATEGORIES:
+${topExpenseCategories.map(([cat, amt]) => `- ${cat}: ${centsToDollars(amt)}`).join('\n') || 'No expenses yet'}
 
 RECENT JOBS (last 10):
 ${jobs.slice(-10).map(j => {
@@ -103,7 +198,7 @@ ${invoices.filter(inv => inv.paymentStatus !== 'paid').slice(0, 5).map(inv => {
 LOW STOCK ITEMS:
 ${lowStockItems.map(item => `- ${item.name}: ${item.quantity} left (reorder at ${item.reorderLevel})`).join('\n') || 'None'}
 
-Answer questions using ONLY the provided summary values. Be concise and helpful.
+Answer questions about trends, comparisons, reports, and business metrics using ONLY the provided summary values. Be concise and helpful.
 `;
   };
 
