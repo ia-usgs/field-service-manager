@@ -30,7 +30,27 @@ export default function AIAssistant() {
   }, [messages]);
 
   const buildContext = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    // Calculate lifetime revenue
     const totalRevenue = invoices.reduce((sum, inv) => sum + inv.incomeAmountCents, 0);
+    
+    // Calculate this month's revenue
+    const thisMonthRevenue = invoices
+      .filter(inv => {
+        const invDate = new Date(inv.invoiceDate);
+        return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
+      })
+      .reduce((sum, inv) => sum + inv.incomeAmountCents, 0);
+    
+    // Calculate today's revenue
+    const todayStr = now.toISOString().split('T')[0];
+    const todayRevenue = invoices
+      .filter(inv => inv.invoiceDate.startsWith(todayStr))
+      .reduce((sum, inv) => sum + inv.incomeAmountCents, 0);
+    
     const outstandingAmount = invoices
       .filter(inv => inv.paymentStatus !== 'paid')
       .reduce((sum, inv) => sum + (inv.totalCents - inv.paidAmountCents), 0);
@@ -39,19 +59,27 @@ export default function AIAssistant() {
     const lowStockItems = inventoryItems.filter(item => 
       item.reorderLevel && item.quantity <= item.reorderLevel
     );
+    
+    const monthName = now.toLocaleString('default', { month: 'long' });
 
     return `
-You are an AI assistant for a service business management app. Here's the current business data:
+You are an AI assistant for a service business management app. Today is ${now.toLocaleDateString()}.
 
-SUMMARY:
+IMPORTANT: Use ONLY the pre-calculated values below. Do NOT recalculate or sum up values from the detailed data.
+
+FINANCIAL SUMMARY (use these exact values):
+- Total Lifetime Revenue: ${centsToDollars(totalRevenue)} (all-time earnings)
+- Revenue This Month (${monthName}): ${centsToDollars(thisMonthRevenue)}
+- Revenue Today: ${centsToDollars(todayRevenue)}
+- Outstanding Amount: ${centsToDollars(outstandingAmount)} (unpaid invoices)
+- Total Expenses: ${centsToDollars(totalExpenses)}
+- Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
+
+BUSINESS METRICS:
 - Total Customers: ${customers.length}
 - Active Jobs: ${activeJobs.length}
 - Total Jobs: ${jobs.length}
 - Total Invoices: ${invoices.length}
-- Total Revenue: ${centsToDollars(totalRevenue)}
-- Outstanding Amount: ${centsToDollars(outstandingAmount)}
-- Total Expenses: ${centsToDollars(totalExpenses)}
-- Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
 - Low Stock Items: ${lowStockItems.length}
 
 CUSTOMERS (${customers.length}):
@@ -73,7 +101,7 @@ ${invoices.filter(inv => inv.paymentStatus !== 'paid').slice(0, 5).map(inv => {
 LOW STOCK ITEMS:
 ${lowStockItems.map(item => `- ${item.name}: ${item.quantity} left (reorder at ${item.reorderLevel})`).join('\n') || 'None'}
 
-Answer questions about this business data. Be helpful, concise, and provide actionable insights when relevant.
+Answer questions using ONLY the provided summary values. Be concise and helpful.
 `;
   };
 
