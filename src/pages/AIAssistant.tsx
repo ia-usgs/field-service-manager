@@ -31,25 +31,27 @@ export default function AIAssistant() {
 
   const buildContext = () => {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const today = now.toISOString().split("T")[0];
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     
-    // Calculate lifetime revenue
-    const totalRevenue = invoices.reduce((sum, inv) => sum + inv.incomeAmountCents, 0);
+    // Use same revenue calculation as Dashboard: income ratio × paid amount
+    const getIncomeFromInvoice = (inv: typeof invoices[0]) => {
+      const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
+      return Math.round(inv.paidAmountCents * incomeRatio);
+    };
     
-    // Calculate this month's revenue
+    // Calculate lifetime revenue (same as Dashboard)
+    const totalRevenue = invoices.reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
+    
+    // Calculate this month's revenue based on paymentDate (same as Dashboard)
     const thisMonthRevenue = invoices
-      .filter(inv => {
-        const invDate = new Date(inv.invoiceDate);
-        return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
-      })
-      .reduce((sum, inv) => sum + inv.incomeAmountCents, 0);
+      .filter(inv => inv.paymentDate?.startsWith(thisMonth))
+      .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
     
-    // Calculate today's revenue
-    const todayStr = now.toISOString().split('T')[0];
+    // Calculate today's revenue based on paymentDate (same as Dashboard)
     const todayRevenue = invoices
-      .filter(inv => inv.invoiceDate.startsWith(todayStr))
-      .reduce((sum, inv) => sum + inv.incomeAmountCents, 0);
+      .filter(inv => inv.paymentDate?.startsWith(today))
+      .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
     
     const outstandingAmount = invoices
       .filter(inv => inv.paymentStatus !== 'paid')
