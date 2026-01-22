@@ -33,200 +33,110 @@ export default function AIAssistant() {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthName = now.toLocaleString('default', { month: 'long' });
     
-    // Use same revenue calculation as Dashboard: income ratio × paid amount
+    // Revenue calculation helper (same as Dashboard)
     const getIncomeFromInvoice = (inv: typeof invoices[0]) => {
       const incomeRatio = inv.incomeAmountCents ? inv.incomeAmountCents / inv.totalCents : 1;
       return Math.round(inv.paidAmountCents * incomeRatio);
     };
     
-    // Calculate lifetime revenue (same as Dashboard)
+    // Pre-computed summaries for accuracy
     const totalRevenue = invoices.reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
-    
-    // Calculate this month's revenue based on paymentDate (same as Dashboard)
     const thisMonthRevenue = invoices
       .filter(inv => inv.paymentDate?.startsWith(thisMonth))
       .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
-    
-    // Calculate today's revenue based on paymentDate (same as Dashboard)
     const todayRevenue = invoices
       .filter(inv => inv.paymentDate?.startsWith(today))
       .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
-    
     const outstandingAmount = invoices
       .filter(inv => inv.paymentStatus !== 'paid')
       .reduce((sum, inv) => sum + (inv.totalCents - inv.paidAmountCents), 0);
     const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amountCents, 0);
-    const activeJobs = jobs.filter(j => j.status !== 'paid' && j.status !== 'completed');
-    const lowStockItems = inventoryItems.filter(item => 
-      item.reorderLevel && item.quantity <= item.reorderLevel
-    );
-    
-    const monthName = now.toLocaleString('default', { month: 'long' });
 
-    // Build monthly trends for last 6 months
-    const monthlyTrends: { month: string; revenue: number; expenses: number; profit: number }[] = [];
+    // Monthly trends for last 6 months
+    const monthlyTrends: { month: string; revenue: number; expenses: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
       const monthLabel = date.toLocaleString('default', { month: 'short', year: 'numeric' });
-      
-      const monthRevenue = invoices
-        .filter(inv => inv.paymentDate?.startsWith(monthKey))
-        .reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0);
-      
-      const monthExpenses = expenses
-        .filter(exp => exp.date.startsWith(monthKey))
-        .reduce((sum, exp) => sum + exp.amountCents, 0);
-      
       monthlyTrends.push({
         month: monthLabel,
-        revenue: monthRevenue,
-        expenses: monthExpenses,
-        profit: monthRevenue - monthExpenses,
+        revenue: invoices.filter(inv => inv.paymentDate?.startsWith(monthKey)).reduce((sum, inv) => sum + getIncomeFromInvoice(inv), 0),
+        expenses: expenses.filter(exp => exp.date.startsWith(monthKey)).reduce((sum, exp) => sum + exp.amountCents, 0),
       });
     }
 
-    // Expense breakdown by category
-    const expensesByCategory: Record<string, number> = {};
-    expenses.forEach(exp => {
-      expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + exp.amountCents;
-    });
-    const topExpenseCategories = Object.entries(expensesByCategory)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-
-    // Revenue by customer (ALL customers)
-    const revenueByCustomer: Record<string, { name: string; revenue: number }> = {};
-    invoices.forEach(inv => {
-      const customer = customers.find(c => c.id === inv.customerId);
-      if (customer) {
-        if (!revenueByCustomer[inv.customerId]) {
-          revenueByCustomer[inv.customerId] = { name: customer.name, revenue: 0 };
-        }
-        revenueByCustomer[inv.customerId].revenue += getIncomeFromInvoice(inv);
-      }
-    });
-    const allCustomersByRevenue = Object.values(revenueByCustomer)
-      .sort((a, b) => b.revenue - a.revenue);
-    const topCustomers = allCustomersByRevenue.slice(0, 5);
-    const bottomCustomers = allCustomersByRevenue.slice(-5).reverse(); // Lowest first
-
-    // Job status breakdown
-    const jobsByStatus = {
-      quoted: jobs.filter(j => j.status === 'quoted').length,
-      inProgress: jobs.filter(j => j.status === 'in-progress').length,
-      completed: jobs.filter(j => j.status === 'completed').length,
-      invoiced: jobs.filter(j => j.status === 'invoiced').length,
-      paid: jobs.filter(j => j.status === 'paid').length,
+    // Build the full data export (similar to Settings export but from state)
+    const fullData = {
+      customers: customers.map(c => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, address: c.address, notes: c.notes, tags: c.tags, archived: c.archived })),
+      jobs: jobs.map(j => {
+        const customer = customers.find(c => c.id === j.customerId);
+        return {
+          id: j.id,
+          customer: customer?.name || 'Unknown',
+          dateOfService: j.dateOfService,
+          problemDescription: j.problemDescription,
+          workPerformed: j.workPerformed,
+          laborHours: j.laborHours,
+          laborRateCents: j.laborRateCents,
+          parts: j.parts,
+          status: j.status,
+        };
+      }),
+      invoices: invoices.map(inv => {
+        const customer = customers.find(c => c.id === inv.customerId);
+        return {
+          invoiceNumber: inv.invoiceNumber,
+          customer: customer?.name || 'Unknown',
+          invoiceDate: inv.invoiceDate,
+          totalCents: inv.totalCents,
+          incomeAmountCents: inv.incomeAmountCents,
+          paidAmountCents: inv.paidAmountCents,
+          paymentStatus: inv.paymentStatus,
+          paymentDate: inv.paymentDate,
+        };
+      }),
+      expenses: expenses.map(e => ({ date: e.date, vendor: e.vendor, category: e.category, description: e.description, amountCents: e.amountCents })),
+      payments: payments.map(p => ({ invoiceId: p.invoiceId, amountCents: p.amountCents, type: p.type, method: p.method, date: p.date })),
+      reminders: reminders.map(r => {
+        const customer = customers.find(c => c.id === r.customerId);
+        return { title: r.title, customer: customer?.name || 'Unknown', dueDate: r.dueDate, completed: r.completed, type: r.type };
+      }),
+      inventory: inventoryItems.map(i => ({ name: i.name, sku: i.sku, quantity: i.quantity, unitCostCents: i.unitCostCents, unitPriceCents: i.unitPriceCents, reorderLevel: i.reorderLevel })),
     };
 
-    // Parts profit calculation
-    const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
-    let partsCost = 0;
-    let partsRevenue = 0;
-    completedJobs.forEach(job => {
-      job.parts?.forEach(part => {
-        if (part.source === 'inventory') {
-          partsCost += (part.unitCostCents || 0) * part.quantity;
-          partsRevenue += part.unitPriceCents * part.quantity;
-        }
-      });
-    });
-    const partsProfit = partsRevenue - partsCost;
-    const partsMargin = partsRevenue > 0 ? ((partsProfit / partsRevenue) * 100).toFixed(1) : '0';
-
-    // Collection rate
-    const totalBilled = invoices.reduce((sum, inv) => sum + inv.totalCents, 0);
-    const totalCollected = invoices.reduce((sum, inv) => sum + inv.paidAmountCents, 0);
-    const collectionRate = totalBilled > 0 ? ((totalCollected / totalBilled) * 100).toFixed(1) : '100';
-
     return `
-You are an AI assistant for a service business management app. Today is ${now.toLocaleDateString()}.
+You are an AI assistant for a service business management app. Today is ${now.toLocaleDateString()} (${monthName}).
 
-IMPORTANT: Use ONLY the pre-calculated values below. Do NOT recalculate or sum up values from the detailed data.
+IMPORTANT RULES:
+1. For financial summaries (total revenue, this month's revenue, etc.), use ONLY the PRE-COMPUTED VALUES below - do NOT recalculate from raw data.
+2. For specific queries (find a customer, look up a job, etc.), use the COMPLETE DATA section.
+3. All monetary values are in CENTS - divide by 100 to get dollars.
 
-FINANCIAL SUMMARY (use these exact values):
-- Total Lifetime Revenue: ${centsToDollars(totalRevenue)} (all-time earnings)
+=== PRE-COMPUTED FINANCIAL SUMMARY (use these exact values) ===
+- Total Lifetime Revenue: ${centsToDollars(totalRevenue)}
 - Revenue This Month (${monthName}): ${centsToDollars(thisMonthRevenue)}
 - Revenue Today: ${centsToDollars(todayRevenue)}
-- Outstanding Amount: ${centsToDollars(outstandingAmount)} (unpaid invoices)
+- Outstanding Amount: ${centsToDollars(outstandingAmount)}
 - Total Expenses: ${centsToDollars(totalExpenses)}
 - Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
-- Collection Rate: ${collectionRate}%
 
-PARTS & INVENTORY METRICS:
-- Parts Revenue: ${centsToDollars(partsRevenue)}
-- Parts Cost: ${centsToDollars(partsCost)}
-- Parts Profit: ${centsToDollars(partsProfit)}
-- Parts Margin: ${partsMargin}%
-- Low Stock Items: ${lowStockItems.length}
+=== MONTHLY TRENDS (Last 6 Months) ===
+${monthlyTrends.map(m => `${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.revenue - m.expenses)}`).join('\n')}
 
-BUSINESS METRICS:
+=== QUICK STATS ===
 - Total Customers: ${customers.length}
-- Active Jobs: ${activeJobs.length}
-- Total Jobs: ${jobs.length}
+- Total Jobs: ${jobs.length} (Quoted: ${jobs.filter(j => j.status === 'quoted').length}, In Progress: ${jobs.filter(j => j.status === 'in-progress').length}, Completed: ${jobs.filter(j => j.status === 'completed').length}, Invoiced: ${jobs.filter(j => j.status === 'invoiced').length}, Paid: ${jobs.filter(j => j.status === 'paid').length})
 - Total Invoices: ${invoices.length}
-- Total Payments Recorded: ${payments.length}
-- Total Refunds: ${payments.filter(p => p.type === 'refund').length}
-- Total Attachments: ${attachments.length}
-
-REMINDERS:
-- Total Reminders: ${reminders.length}
 - Pending Reminders: ${reminders.filter(r => !r.completed).length}
-- Overdue Reminders: ${reminders.filter(r => !r.completed && new Date(r.dueDate) < now).length}
-- Upcoming (next 7 days): ${reminders.filter(r => {
-  if (r.completed) return false;
-  const due = new Date(r.dueDate);
-  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  return due >= now && due <= weekFromNow;
-}).length}
+- Inventory Items: ${inventoryItems.length}
+- Low Stock Items: ${inventoryItems.filter(i => i.reorderLevel && i.quantity <= i.reorderLevel).length}
 
-JOB STATUS BREAKDOWN:
-- Quoted: ${jobsByStatus.quoted}
-- In Progress: ${jobsByStatus.inProgress}
-- Completed: ${jobsByStatus.completed}
-- Invoiced: ${jobsByStatus.invoiced}
-- Paid: ${jobsByStatus.paid}
+=== COMPLETE DATA (use for specific lookups) ===
+${JSON.stringify(fullData, null, 2)}
 
-MONTHLY TRENDS (Last 6 Months):
-${monthlyTrends.map(m => `- ${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.profit)}`).join('\n')}
-
-ALL CUSTOMERS BY REVENUE (sorted highest to lowest):
-${allCustomersByRevenue.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
-
-TOP 5 EXPENSE CATEGORIES:
-${topExpenseCategories.map(([cat, amt]) => `- ${cat}: ${centsToDollars(amt)}`).join('\n') || 'No expenses yet'}
-
-INVENTORY CATALOG (${inventoryItems.length} items):
-${inventoryItems.slice(0, 10).map(item => `- ${item.name}: ${item.quantity} in stock, sells at ${centsToDollars(item.unitPriceCents)}`).join('\n') || 'No inventory items'}
-${inventoryItems.length > 10 ? `... and ${inventoryItems.length - 10} more items` : ''}
-
-LOW STOCK ITEMS:
-${lowStockItems.map(item => `- ${item.name}: ${item.quantity} left (reorder at ${item.reorderLevel})`).join('\n') || 'None'}
-
-RECENT JOBS (last 10):
-${jobs.slice(-10).map(j => {
-  const customer = customers.find(c => c.id === j.customerId);
-  return `- ${j.problemDescription.substring(0, 50)}... for ${customer?.name || 'Unknown'} - Status: ${j.status}`;
-}).join('\n')}
-
-UNPAID INVOICES:
-${invoices.filter(inv => inv.paymentStatus !== 'paid').slice(0, 5).map(inv => {
-  const customer = customers.find(c => c.id === inv.customerId);
-  return `- Invoice #${inv.invoiceNumber} for ${customer?.name || 'Unknown'}: ${centsToDollars(inv.totalCents - inv.paidAmountCents)} outstanding`;
-}).join('\n')}
-
-UPCOMING REMINDERS:
-${reminders.filter(r => !r.completed).slice(0, 5).map(r => {
-  const customer = customers.find(c => c.id === r.customerId);
-  return `- ${r.title} for ${customer?.name || 'Unknown'} - Due: ${new Date(r.dueDate).toLocaleDateString()}`;
-}).join('\n') || 'No pending reminders'}
-
-RECENT ACTIVITY (last 10 actions):
-${auditLogs.slice(-10).reverse().map(log => `- ${log.action} ${log.entityType}: ${log.details.substring(0, 40)}...`).join('\n') || 'No recent activity'}
-
-Answer questions about trends, comparisons, reports, reminders, inventory, payments, and all business metrics using ONLY the provided summary values. Be concise and helpful.
+Answer questions using the pre-computed summaries for totals, and the complete data for specific lookups. Be concise and helpful.
 `;
   };
 
