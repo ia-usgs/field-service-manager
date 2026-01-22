@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Save, Download, Upload, ImagePlus, X } from "lucide-react";
+import { Save, Download, Upload, ImagePlus, X, Eye, EyeOff } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -18,6 +18,7 @@ const settingsSchema = z.object({
   defaultLaborRate: z.coerce.number().min(0),
   defaultTaxRate: z.coerce.number().min(0).max(100),
   invoicePrefix: z.string().max(10),
+  groqApiKey: z.string().optional(),
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
@@ -27,6 +28,7 @@ export default function Settings() {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { register, handleSubmit, reset } = useForm<SettingsFormData>({
@@ -43,6 +45,7 @@ export default function Settings() {
         defaultLaborRate: settings.defaultLaborRateCents / 100,
         defaultTaxRate: settings.defaultTaxRate,
         invoicePrefix: settings.invoicePrefix,
+        groqApiKey: settings.groqApiKey || "",
       });
       setLogoPreview(settings.companyLogo || null);
     }
@@ -88,6 +91,7 @@ export default function Settings() {
       defaultTaxRate: data.defaultTaxRate,
       invoicePrefix: data.invoicePrefix,
       companyLogo: logoPreview || undefined,
+      groqApiKey: data.groqApiKey || undefined,
     });
     toast({
       title: "Settings saved",
@@ -299,6 +303,32 @@ export default function Settings() {
               <label className="block text-sm font-medium mb-1">Invoice Prefix</label>
               <input {...register("invoicePrefix")} className="input-field w-full" />
             </div>
+          </div>
+
+          <h3 className="font-semibold pt-4">AI Assistant</h3>
+          <div>
+            <label className="block text-sm font-medium mb-1">Groq API Key</label>
+            <div className="relative">
+              <input 
+                {...register("groqApiKey")} 
+                type={showApiKey ? "text" : "password"}
+                placeholder="gsk_..."
+                className="input-field w-full pr-10" 
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+              >
+                {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Get your free API key from{" "}
+              <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                console.groq.com
+              </a>
+            </p>
           </div>
 
           <button type="submit" className="btn-primary flex items-center gap-2">

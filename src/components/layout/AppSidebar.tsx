@@ -12,6 +12,7 @@ import {
   BarChart3,
   Package,
   Activity,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/store/useStore";
@@ -26,6 +27,7 @@ const navItems = [
   { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Logs", url: "/logs", icon: Activity },
+  { title: "AI Assistant", url: "/ai-assistant", icon: MessageSquare },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

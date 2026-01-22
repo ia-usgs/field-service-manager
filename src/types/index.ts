@@ -147,6 +147,7 @@ export interface AppSettings {
   companyPhone: string;
   companyEmail: string;
   companyLogo?: string; // Base64 data URL for custom logo
+  groqApiKey?: string; // API key for Groq AI assistant
 }
 
 export interface AuditLog {
