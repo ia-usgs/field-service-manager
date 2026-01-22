@@ -67,7 +67,19 @@ export default function AIAssistant() {
       });
     }
 
-    // Build compact data (limit records to stay within token limits)
+    // Pre-compute revenue by customer (formatted as dollars)
+    const revenueByCustomer: Record<string, number> = {};
+    invoices.forEach(inv => {
+      const customer = customers.find(c => c.id === inv.customerId);
+      if (customer) {
+        revenueByCustomer[customer.name] = (revenueByCustomer[customer.name] || 0) + getIncomeFromInvoice(inv);
+      }
+    });
+    const customerRevenueList = Object.entries(revenueByCustomer)
+      .map(([name, cents]) => ({ name, revenue: centsToDollars(cents) }))
+      .sort((a, b) => parseFloat(b.revenue.replace(/[$,]/g, '')) - parseFloat(a.revenue.replace(/[$,]/g, '')));
+
+    // Build compact data with FORMATTED dollar values (not cents)
     const fullData = {
       customers: customers.slice(0, 100).map(c => ({ name: c.name, email: c.email, phone: c.phone, archived: c.archived })),
       jobs: jobs.map(j => {
@@ -77,7 +89,7 @@ export default function AIAssistant() {
           customer: customer?.name || 'Unknown',
           date: j.dateOfService,
           description: j.problemDescription.substring(0, 60),
-          totalCents,
+          total: centsToDollars(totalCents),
           status: j.status,
         };
       }),
@@ -86,35 +98,35 @@ export default function AIAssistant() {
         return {
           number: inv.invoiceNumber,
           customer: customer?.name || 'Unknown',
-          totalCents: inv.totalCents,
-          incomeCents: inv.incomeAmountCents,
-          paidCents: inv.paidAmountCents,
+          total: centsToDollars(inv.totalCents),
+          income: centsToDollars(inv.incomeAmountCents),
+          paid: centsToDollars(inv.paidAmountCents),
           status: inv.paymentStatus,
         };
       }),
-      expenses: expenses.slice(0, 50).map(e => ({ date: e.date, category: e.category, amountCents: e.amountCents })),
+      expenses: expenses.slice(0, 50).map(e => ({ date: e.date, category: e.category, amount: centsToDollars(e.amountCents) })),
       reminders: reminders.filter(r => !r.completed).slice(0, 20).map(r => {
         const customer = customers.find(c => c.id === r.customerId);
         return { title: r.title, customer: customer?.name || 'Unknown', dueDate: r.dueDate };
       }),
-      inventory: inventoryItems.map(i => ({ name: i.name, qty: i.quantity, priceCents: i.unitPriceCents })),
+      inventory: inventoryItems.map(i => ({ name: i.name, qty: i.quantity, price: centsToDollars(i.unitPriceCents) })),
     };
 
     return `
 You are an AI assistant for a service business management app. Today is ${now.toLocaleDateString()} (${monthName}).
 
-IMPORTANT RULES:
-1. For financial summaries (total revenue, this month's revenue, etc.), use ONLY the PRE-COMPUTED VALUES below - do NOT recalculate from raw data.
-2. For specific queries (find a customer, look up a job, etc.), use the COMPLETE DATA section.
-3. All monetary values are in CENTS - divide by 100 to get dollars.
+CRITICAL: All dollar amounts below are ALREADY FORMATTED. Use them exactly as shown - do NOT recalculate anything.
 
-=== PRE-COMPUTED FINANCIAL SUMMARY (use these exact values) ===
+=== FINANCIAL SUMMARY ===
 - Total Lifetime Revenue: ${centsToDollars(totalRevenue)}
 - Revenue This Month (${monthName}): ${centsToDollars(thisMonthRevenue)}
 - Revenue Today: ${centsToDollars(todayRevenue)}
 - Outstanding Amount: ${centsToDollars(outstandingAmount)}
 - Total Expenses: ${centsToDollars(totalExpenses)}
 - Net Profit: ${centsToDollars(totalRevenue - totalExpenses)}
+
+=== REVENUE BY CUSTOMER (sorted highest to lowest) ===
+${customerRevenueList.map((c, i) => `${i + 1}. ${c.name}: ${c.revenue}`).join('\n') || 'No customer revenue data'}
 
 === MONTHLY TRENDS (Last 6 Months) ===
 ${monthlyTrends.map(m => `${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.revenue - m.expenses)}`).join('\n')}
@@ -125,12 +137,11 @@ ${monthlyTrends.map(m => `${m.month}: Revenue ${centsToDollars(m.revenue)}, Expe
 - Total Invoices: ${invoices.length}
 - Pending Reminders: ${reminders.filter(r => !r.completed).length}
 - Inventory Items: ${inventoryItems.length}
-- Low Stock Items: ${inventoryItems.filter(i => i.reorderLevel && i.quantity <= i.reorderLevel).length}
 
-=== COMPLETE DATA (use for specific lookups) ===
+=== DETAILED DATA (all amounts are formatted as dollars) ===
 ${JSON.stringify(fullData, null, 2)}
 
-Answer questions using the pre-computed summaries for totals, and the complete data for specific lookups. Be concise and helpful.
+Use the pre-formatted dollar amounts exactly as shown. Be concise and helpful.
 `;
   };
 
