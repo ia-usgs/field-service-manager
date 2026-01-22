@@ -96,7 +96,7 @@ export default function AIAssistant() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
-    // Revenue by customer (top 5)
+    // Revenue by customer (ALL customers)
     const revenueByCustomer: Record<string, { name: string; revenue: number }> = {};
     invoices.forEach(inv => {
       const customer = customers.find(c => c.id === inv.customerId);
@@ -107,9 +107,10 @@ export default function AIAssistant() {
         revenueByCustomer[inv.customerId].revenue += getIncomeFromInvoice(inv);
       }
     });
-    const topCustomers = Object.values(revenueByCustomer)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
+    const allCustomersByRevenue = Object.values(revenueByCustomer)
+      .sort((a, b) => b.revenue - a.revenue);
+    const topCustomers = allCustomersByRevenue.slice(0, 5);
+    const bottomCustomers = allCustomersByRevenue.slice(-5).reverse(); // Lowest first
 
     // Job status breakdown
     const jobsByStatus = {
@@ -191,8 +192,13 @@ JOB STATUS BREAKDOWN:
 MONTHLY TRENDS (Last 6 Months):
 ${monthlyTrends.map(m => `- ${m.month}: Revenue ${centsToDollars(m.revenue)}, Expenses ${centsToDollars(m.expenses)}, Profit ${centsToDollars(m.profit)}`).join('\n')}
 
-TOP 5 CUSTOMERS BY REVENUE:
+TOP 5 CUSTOMERS BY REVENUE (highest):
 ${topCustomers.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
+
+BOTTOM 5 CUSTOMERS BY REVENUE (lowest):
+${bottomCustomers.map((c, i) => `${i + 1}. ${c.name}: ${centsToDollars(c.revenue)}`).join('\n') || 'No customer data yet'}
+
+TOTAL CUSTOMERS WITH REVENUE: ${allCustomersByRevenue.length}
 
 TOP 5 EXPENSE CATEGORIES:
 ${topExpenseCategories.map(([cat, amt]) => `- ${cat}: ${centsToDollars(amt)}`).join('\n') || 'No expenses yet'}
