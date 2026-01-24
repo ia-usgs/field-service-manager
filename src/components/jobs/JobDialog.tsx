@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const partSchema = z.object({
   name: z.string().min(1, "Part name required"),
@@ -334,14 +335,15 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="bg-card border-border max-w-2xl h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>
             {job ? (isViewOnly ? "View Job" : "Edit Job") : "Create New Job"}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <ScrollArea className="flex-1 -mx-6 px-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pb-4">
           {/* Customer & Date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1118,6 +1120,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
             </p>
           )}
         </form>
+        </ScrollArea>
       </DialogContent>
 
       {/* Add to Inventory Prompt Dialog */}
