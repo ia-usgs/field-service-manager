@@ -29,7 +29,8 @@ interface AppState {
   // Job actions
   addJob: (job: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Job>;
   updateJob: (id: string, updates: Partial<Job>) => Promise<void>;
-  deleteJob: (id: string, forceDelete?: boolean) => Promise<void>;
+  deleteJob: (id: string, forceDelete?: boolean) => Promise<{ job: Job; invoice: Invoice | null; payments: Payment[]; reminders: Reminder[]; attachments: Attachment[]; inventoryAdjustments: { itemId: string; quantityRestored: number }[] }>;
+  restoreJob: (jobId: string, data: { job: Job; invoice: Invoice | null; payments: Payment[]; reminders: Reminder[]; attachments: Attachment[]; inventoryAdjustments: { itemId: string; quantityRestored: number }[] }) => Promise<void>;
   completeJob: (id: string) => Promise<Invoice>;
 
   // Invoice actions
@@ -342,7 +343,7 @@ export const useStore = create<AppState>((set, get) => ({
   deleteJob: async (id, forceDelete = false) => {
     const db = await getDB();
     const job = get().jobs.find((j) => j.id === id);
-    if (!job) return;
+    if (!job) throw new Error('Job not found');
 
     const isInvoicedOrPaid = job.status === 'invoiced' || job.status === 'paid';
     
@@ -355,16 +356,22 @@ export const useStore = create<AppState>((set, get) => ({
     const customer = get().customers.find(c => c.id === job.customerId);
     const customerName = customer?.name || 'Unknown Customer';
 
+    // Collect data for potential undo
+    const jobReminders = get().reminders.filter((r) => r.jobId === id);
+    const jobAttachments = get().attachments.filter((a) => a.jobId === id);
+    const inventoryAdjustments: { itemId: string; quantityRestored: number }[] = [];
+
     // If job has an invoice, delete it too
     let deletedInvoice: Invoice | null = null;
+    let deletedPayments: Payment[] = [];
     if (job.invoiceId) {
       const invoice = get().invoices.find(i => i.id === job.invoiceId);
       if (invoice) {
         deletedInvoice = invoice;
         
-        // Delete associated payments
-        const invoicePayments = get().payments.filter(p => p.invoiceId === invoice.id);
-        for (const payment of invoicePayments) {
+        // Collect and delete associated payments
+        deletedPayments = get().payments.filter(p => p.invoiceId === invoice.id);
+        for (const payment of deletedPayments) {
           await db.delete('payments', payment.id);
         }
         
@@ -396,14 +403,12 @@ export const useStore = create<AppState>((set, get) => ({
           };
           await db.put('inventoryItems', updatedItem);
           updatedInventoryItems.push(updatedItem);
+          inventoryAdjustments.push({ itemId: inventoryItem.id, quantityRestored: part.quantity });
         }
       }
     }
 
     // Delete associated reminders and attachments
-    const jobReminders = get().reminders.filter((r) => r.jobId === id);
-    const jobAttachments = get().attachments.filter((a) => a.jobId === id);
-    
     for (const reminder of jobReminders) {
       await db.delete('reminders', reminder.id);
     }
@@ -450,6 +455,88 @@ export const useStore = create<AppState>((set, get) => ({
         details: `Invoice #${deletedInvoice.invoiceNumber} deleted (job deletion)`,
         timestamp: now,
       }] : [])],
+    }));
+
+    // Return deleted data for undo capability
+    return {
+      job,
+      invoice: deletedInvoice,
+      payments: deletedPayments,
+      reminders: jobReminders,
+      attachments: jobAttachments,
+      inventoryAdjustments,
+    };
+  },
+
+  restoreJob: async (jobId, data) => {
+    const db = await getDB();
+    const now = new Date().toISOString();
+
+    // Restore the job
+    await db.put('jobs', data.job);
+
+    // Restore invoice if there was one
+    if (data.invoice) {
+      await db.put('invoices', data.invoice);
+    }
+
+    // Restore payments
+    for (const payment of data.payments) {
+      await db.put('payments', payment);
+    }
+
+    // Restore reminders
+    for (const reminder of data.reminders) {
+      await db.put('reminders', reminder);
+    }
+
+    // Restore attachments
+    for (const attachment of data.attachments) {
+      await db.put('attachments', attachment);
+    }
+
+    // Reverse inventory adjustments (subtract the quantities that were restored)
+    const updatedInventoryItems: InventoryItem[] = [];
+    for (const adjustment of data.inventoryAdjustments) {
+      const inventoryItem = get().inventoryItems.find(i => i.id === adjustment.itemId);
+      if (inventoryItem) {
+        const updatedItem = {
+          ...inventoryItem,
+          quantity: inventoryItem.quantity - adjustment.quantityRestored,
+          updatedAt: now,
+        };
+        await db.put('inventoryItems', updatedItem);
+        updatedInventoryItems.push(updatedItem);
+      }
+    }
+
+    // Log the restoration
+    const customer = get().customers.find(c => c.id === data.job.customerId);
+    const customerName = customer?.name || 'Unknown Customer';
+    
+    const auditLog: AuditLog = {
+      id: uuidv4(),
+      entityType: 'job',
+      entityId: jobId,
+      action: 'created',
+      details: `Job restored (undo delete) - Customer: ${customerName}`,
+      timestamp: now,
+    };
+    await db.put('auditLog', auditLog);
+
+    set((state) => ({
+      jobs: [...state.jobs, data.job],
+      invoices: data.invoice ? [...state.invoices, data.invoice] : state.invoices,
+      payments: [...state.payments, ...data.payments],
+      reminders: [...state.reminders, ...data.reminders],
+      attachments: [...state.attachments, ...data.attachments],
+      inventoryItems: updatedInventoryItems.length > 0
+        ? state.inventoryItems.map(item => {
+            const updated = updatedInventoryItems.find(u => u.id === item.id);
+            return updated || item;
+          })
+        : state.inventoryItems,
+      auditLogs: [...state.auditLogs, auditLog],
     }));
   },
 

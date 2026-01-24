@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Undo2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
+import { useTrashStore } from "@/store/useTrashStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
 import { JobDialog } from "@/components/jobs/JobDialog";
 import { centsToDollars } from "@/lib/db";
 import { Job } from "@/types";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function Jobs() {
-  const { jobs, customers, deleteJob } = useStore();
+  const { jobs, customers, deleteJob, restoreJob } = useStore();
+  const { stashDeletedJob, getDeletedJob, removeFromTrash } = useTrashStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -85,11 +88,62 @@ export default function Jobs() {
     }
   };
 
+  const handleUndo = async (jobId: string) => {
+    const deletedData = getDeletedJob(jobId);
+    if (!deletedData) return;
+    
+    try {
+      await restoreJob(jobId, {
+        job: deletedData.job,
+        invoice: deletedData.invoice,
+        payments: deletedData.payments,
+        reminders: deletedData.reminders,
+        attachments: deletedData.attachments,
+        inventoryAdjustments: deletedData.inventoryAdjustments,
+      });
+      removeFromTrash(jobId);
+      toast.success("Job restored successfully");
+    } catch (error) {
+      console.error("Failed to restore job:", error);
+      toast.error("Failed to restore job");
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!jobToDelete) return;
     
     const isInvoicedOrPaid = jobToDelete.status === "invoiced" || jobToDelete.status === "paid";
-    await deleteJob(jobToDelete.id, isInvoicedOrPaid);
+    const customerName = customers.find(c => c.id === jobToDelete.customerId)?.name || "Unknown";
+    const jobId = jobToDelete.id;
+    
+    try {
+      const deletedData = await deleteJob(jobId, isInvoicedOrPaid);
+      
+      // Stash for undo (except for invoiced/paid jobs - too risky)
+      if (!isInvoicedOrPaid) {
+        stashDeletedJob(deletedData, () => {
+          // On expire, just remove silently
+        });
+        
+        // Show undo toast
+        toast.success(
+          `Job for ${customerName} deleted`,
+          {
+            duration: 30000,
+            action: {
+              label: "Undo",
+              onClick: () => handleUndo(jobId),
+            },
+            icon: <Trash2 className="w-4 h-4" />,
+          }
+        );
+      } else {
+        toast.success(`Job for ${customerName} permanently deleted`);
+      }
+    } catch (error) {
+      console.error("Failed to delete job:", error);
+      toast.error("Failed to delete job");
+    }
     
     setIsDeleteDialogOpen(false);
     setJobToDelete(null);
@@ -238,10 +292,17 @@ export default function Jobs() {
                     <li>All reminders and attachments</li>
                     <li>This action will be logged in the audit trail</li>
                   </ul>
-                  <p className="mt-3 font-medium">This cannot be undone. Are you absolutely sure?</p>
+                  <p className="mt-3 font-medium text-destructive">
+                    ⚠️ This cannot be undone. Invoiced/paid jobs cannot be restored.
+                  </p>
                 </>
               ) : (
-                "Are you sure you want to delete this job? This action cannot be undone."
+                <>
+                  Are you sure you want to delete this job? 
+                  <p className="mt-2 text-muted-foreground">
+                    You'll have 30 seconds to undo this action.
+                  </p>
+                </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
