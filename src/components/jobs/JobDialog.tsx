@@ -14,6 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const partSchema = z.object({
   name: z.string().min(1, "Part name required"),
@@ -64,11 +74,12 @@ const defaultReminders = [
 ];
 
 export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProps) {
-  const { addJob, updateJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment, inventoryItems, addInventoryItem } = useStore();
+  const { addJob, updateJob, deleteJob, completeJob, customers, settings, addReminder, getRemindersByJob, updateReminder: updateReminderStore, deleteReminder, completeReminder, addAttachment, getAttachmentsByJob, deleteAttachment, inventoryItems, addInventoryItem } = useStore();
   const [existingReminders, setExistingReminders] = useState<Reminder[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
   const [pendingAttachments, setPendingAttachments] = useState<{ file: File; type: Attachment["type"] }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
   const [editingReminderData, setEditingReminderData] = useState<{ title: string; dueDate: string; type: Reminder["type"] } | null>(null);
   const [showAddReminder, setShowAddReminder] = useState(false);
@@ -332,6 +343,15 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
   
   // Allow editing even for invoiced/paid jobs (for corrections)
   const isViewOnly = false;
+
+  const canDelete = !!job && job.status !== "invoiced" && job.status !== "paid";
+
+  const handleDeleteJob = async () => {
+    if (!job || !canDelete) return;
+    await deleteJob(job.id);
+    setIsDeleteDialogOpen(false);
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1097,6 +1117,16 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           {/* Actions */}
           {!isViewOnly && (
             <div className="flex gap-3 pt-4">
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  className="btn-secondary flex items-center gap-2 text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
@@ -1123,6 +1153,26 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
         </ScrollArea>
         <div className="flex-shrink-0 px-6 pb-6" />
       </DialogContent>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this job? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteJob}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add to Inventory Prompt Dialog */}
       <Dialog open={showAddToInventoryPrompt} onOpenChange={setShowAddToInventoryPrompt}>
