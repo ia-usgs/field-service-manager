@@ -29,7 +29,7 @@ interface AppState {
   // Job actions
   addJob: (job: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Job>;
   updateJob: (id: string, updates: Partial<Job>) => Promise<void>;
-  deleteJob: (id: string) => Promise<void>;
+  deleteJob: (id: string, forceDelete?: boolean) => Promise<void>;
   completeJob: (id: string) => Promise<Invoice>;
 
   // Invoice actions
@@ -339,17 +339,49 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  deleteJob: async (id) => {
+  deleteJob: async (id, forceDelete = false) => {
     const db = await getDB();
     const job = get().jobs.find((j) => j.id === id);
     if (!job) return;
 
-    // Don't allow deletion of invoiced or paid jobs
-    if (job.status === 'invoiced' || job.status === 'paid') {
-      throw new Error('Cannot delete invoiced or paid jobs');
+    const isInvoicedOrPaid = job.status === 'invoiced' || job.status === 'paid';
+    
+    // Require forceDelete flag for invoiced/paid jobs
+    if (isInvoicedOrPaid && !forceDelete) {
+      throw new Error('Cannot delete invoiced or paid jobs without force flag');
     }
 
     const now = new Date().toISOString();
+    const customer = get().customers.find(c => c.id === job.customerId);
+    const customerName = customer?.name || 'Unknown Customer';
+
+    // If job has an invoice, delete it too
+    let deletedInvoice: Invoice | null = null;
+    if (job.invoiceId) {
+      const invoice = get().invoices.find(i => i.id === job.invoiceId);
+      if (invoice) {
+        deletedInvoice = invoice;
+        
+        // Delete associated payments
+        const invoicePayments = get().payments.filter(p => p.invoiceId === invoice.id);
+        for (const payment of invoicePayments) {
+          await db.delete('payments', payment.id);
+        }
+        
+        await db.delete('invoices', invoice.id);
+        
+        // Log invoice deletion
+        const invoiceAuditLog: AuditLog = {
+          id: uuidv4(),
+          entityType: 'invoice',
+          entityId: invoice.id,
+          action: 'deleted',
+          details: `Invoice #${invoice.invoiceNumber} deleted (job deletion) - Customer: ${customerName}, Total: $${(invoice.totalCents / 100).toFixed(2)}`,
+          timestamp: now,
+        };
+        await db.put('auditLog', invoiceAuditLog);
+      }
+    }
 
     // Restore inventory quantities for parts that were used
     const updatedInventoryItems: InventoryItem[] = [];
@@ -381,18 +413,27 @@ export const useStore = create<AppState>((set, get) => ({
 
     await db.delete('jobs', id);
 
+    // Calculate job total for audit log
+    const laborTotal = job.laborHours * job.laborRateCents;
+    const partsTotal = (job.parts || []).reduce((sum, p) => sum + p.quantity * p.unitPriceCents, 0);
+    const subtotal = laborTotal + partsTotal + job.miscFeesCents;
+    const tax = Math.round(subtotal * (job.taxRate / 100));
+    const total = subtotal + tax;
+
     const auditLog: AuditLog = {
       id: uuidv4(),
       entityType: 'job',
       entityId: id,
       action: 'deleted',
-      details: `Job deleted`,
+      details: `Job deleted - Customer: ${customerName}, Status: ${job.status}, Total: $${(total / 100).toFixed(2)}${isInvoicedOrPaid ? ' (FORCE DELETE - was ' + job.status + ')' : ''}`,
       timestamp: now,
     };
     await db.put('auditLog', auditLog);
 
     set((state) => ({
       jobs: state.jobs.filter((j) => j.id !== id),
+      invoices: deletedInvoice ? state.invoices.filter((i) => i.id !== deletedInvoice!.id) : state.invoices,
+      payments: deletedInvoice ? state.payments.filter((p) => p.invoiceId !== deletedInvoice!.id) : state.payments,
       reminders: state.reminders.filter((r) => r.jobId !== id),
       attachments: state.attachments.filter((a) => a.jobId !== id),
       inventoryItems: updatedInventoryItems.length > 0 
@@ -401,7 +442,14 @@ export const useStore = create<AppState>((set, get) => ({
             return updated || item;
           })
         : state.inventoryItems,
-      auditLogs: [...state.auditLogs, auditLog],
+      auditLogs: [...state.auditLogs, auditLog, ...(deletedInvoice ? [{
+        id: uuidv4(),
+        entityType: 'invoice' as const,
+        entityId: deletedInvoice.id,
+        action: 'deleted' as const,
+        details: `Invoice #${deletedInvoice.invoiceNumber} deleted (job deletion)`,
+        timestamp: now,
+      }] : [])],
     }));
   },
 
