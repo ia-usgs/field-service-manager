@@ -342,8 +342,8 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pb-4">
+        <ScrollArea className="flex-1">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pb-4 px-6 pr-4">
           {/* Customer & Date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
