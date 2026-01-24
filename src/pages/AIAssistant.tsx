@@ -225,7 +225,11 @@ ${jobsList.join('\n')}
               <SelectTrigger className="w-[200px] bg-card">
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
-              <SelectContent className="bg-popover border border-border z-50">
+              <SelectContent 
+                className="bg-popover border border-border"
+                position="popper"
+                sideOffset={4}
+              >
                 {GROQ_MODELS.map((model) => (
                   <SelectItem key={model.id} value={model.id}>
                     <div className="flex flex-col">
