@@ -1,73 +1,149 @@
-# Welcome to your Lovable project
+# Field Service Manager
 
-## Project info
+A desktop-first field service and customer management application built with **Tauri**. Designed for small businesses, independent technicians, and service providers who need lightweight, fast, and offline-capable job tracking without SaaS lock-in.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## Overview
 
-There are several ways of editing your application.
+Field Service Manager is a local-first desktop application that provides customer relationship management (CRM), job/work order tracking, invoicing support, and operational dashboards — all packaged as a secure native app using Tauri.
 
-**Use Lovable**
+The goal of the project is to replace spreadsheets, notes apps, and fragmented tools with a single, fast, self-hosted solution.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## Core Features
 
-**Use your preferred IDE**
+### Dashboard
+- KPI cards:
+  - Total revenue
+  - Monthly revenue
+  - Outstanding invoices
+  - Net profit
+  - Average job value
+- 6-month revenue trend (line/area chart)
+- Revenue vs expenses comparison
+- Expense breakdown by category
+- Top customers by spend
+- Upcoming reminders (next 30 days) with quick-complete actions
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Customer Management (CRM)
+- Full customer profiles:
+  - Name, email, phone, address
+  - Notes and tags
+- JSON import for bulk migration
+  - Automatic deduplication by email
+- Customer archive (soft delete)
+  - Customers with jobs cannot be permanently removed
+- 360° customer view:
+  - Job history
+  - Invoice history
+  - Service reminders
+- Unified media gallery:
+  - Attachments across all jobs
+- Per-customer statistics:
+  - Total spend
+  - Outstanding balance
+  - Job count
+  - Average job value
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Job / Work Order System
+- Create and edit jobs linked to customers
+- Fields include:
+  - Date
+  - Problem description
+  - Work performed
+  - Labor hours and rate
+  - Parts
+  - Miscellaneous fees
+  - Tax rate
+  - Status
+  - Technician notes
+- Job lifecycle:
+  - Quoted → In Progress → Completed → Invoiced → Paid
 
-Follow these steps:
+### Parts & Inventory
+- Select parts from inventory with live stock counts
+- Out-of-stock items automatically disabled
+- Add custom parts on the fly
+  - Optional prompt to save into inventory catalog
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+---
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Technology Stack
+- **Tauri** – secure, lightweight desktop runtime
+- **Web Frontend** – modern JS/TS framework (Vite-based)
+- **Rust (Tauri backend)** – native bindings, filesystem access, security
+- **Local Storage / Embedded DB**
+- **Cross-platform** – Windows, macOS, Linux
 
-# Step 3: Install the necessary dependencies.
-npm i
+---
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+## Project Structure
+```
+field-service-manager/
+├─ src/
+├─ src-tauri/
+├─ public/
+├─ tauri.conf.json
+├─ package.json
+└─ README.md
 ```
 
-**Edit a file directly in GitHub**
+---
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Development Setup
 
-**Use GitHub Codespaces**
+### Prerequisites
+- Node.js (LTS)
+- Rust (stable)
+- Tauri CLI
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+npm install -g @tauri-apps/cli
+npm install
+npm exec tauri dev
+```
 
-## What technologies are used for this project?
+---
 
-This project is built with:
+## Building
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Update the bundle identifier in `tauri.conf.json`:
 
-## How can I deploy this project?
+```json
+"identifier": "com.yourcompany.fieldservicemanager"
+```
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+```bash
+npm exec tauri build
+```
 
-## Can I connect a custom domain to my Lovable project?
+---
 
-Yes, you can!
+## Design Principles
+- Local-first
+- Offline-capable
+- Fast startup
+- Business-focused
+- No subscriptions
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+---
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Roadmap
+- Invoice PDF generation
+- Payment tracking
+- Technician roles
+- Optional cloud sync
+- Reporting exports
+
+---
+
+## License
+Private / Internal use only.
+
+---
+
+## Disclaimer
+This software is provided as-is. Always maintain backups of your business data.
+
