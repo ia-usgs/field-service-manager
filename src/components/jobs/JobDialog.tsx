@@ -335,14 +335,14 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border max-w-2xl h-[90vh] flex flex-col overflow-hidden">
-        <DialogHeader className="flex-shrink-0">
+      <DialogContent className="bg-card border-border max-w-2xl h-[90vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
           <DialogTitle>
             {job ? (isViewOnly ? "View Job" : "Edit Job") : "Create New Job"}
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <ScrollArea className="flex-1 px-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pb-4">
           {/* Customer & Date */}
           <div className="grid grid-cols-2 gap-4">
@@ -1121,6 +1121,7 @@ export function JobDialog({ open, onOpenChange, job, customerId }: JobDialogProp
           )}
         </form>
         </ScrollArea>
+        <div className="flex-shrink-0 px-6 pb-6" />
       </DialogContent>
 
       {/* Add to Inventory Prompt Dialog */}
