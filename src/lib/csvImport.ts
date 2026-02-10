@@ -50,6 +50,11 @@ export type CSVType = 'paypal' | 'ebay';
 
 export function detectCSVType(csvText: string): CSVType {
   const text = csvText.replace(/^\uFEFF/, '');
+  // eBay Order Earnings Report
+  if (text.includes('Order earnings report') || text.includes('Order creation date,Order number,Item ID')) {
+    return 'ebay';
+  }
+  // Legacy eBay Transaction Report (keep for backward compat)
   if (text.includes('Transaction report') || text.includes('Transaction creation date,Type,Order number')) {
     return 'ebay';
   }
@@ -57,7 +62,7 @@ export function detectCSVType(csvText: string): CSVType {
   if (text.includes('"Date","Time","TimeZone","Name"')) {
     return 'paypal';
   }
-  throw new Error('Unrecognized CSV format. Expected PayPal or eBay transaction export.');
+  throw new Error('Unrecognized CSV format. Expected PayPal or eBay transaction/earnings export.');
 }
 
 // ─── Shared Types ────────────────────────────────────────────────────
@@ -325,45 +330,87 @@ async function importPayPal(
   };
 }
 
-// ─── eBay Import ─────────────────────────────────────────────────────
+// ─── eBay Import (Order Earnings Report) ─────────────────────────────
 
 interface EbayRow {
-  date: string; type: string; orderNumber: string; legacyOrderId: string;
-  buyerUsername: string; buyerName: string;
-  city: string; state: string; zip: string; country: string;
-  netAmount: string; payoutCurrency: string; payoutDate: string;
-  payoutId: string; payoutMethod: string; payoutStatus: string; reasonForHold: string;
-  itemId: string; transactionId: string; itemTitle: string; customLabel: string;
-  quantity: string; itemSubtotal: string; shipping: string;
-  sellerCollectedTax: string; ebayCollectedTax: string;
-  fvfFixed: string; fvfVariable: string; regulatoryFee: string;
-  inadFee: string; belowStandardFee: string; internationalFee: string;
-  charityDonation: string; depositProcessingFee: string;
-  grossAmount: string; transactionCurrency: string; exchangeRate: string;
-  referenceId: string; description: string;
+  orderDate: string;
+  orderNumber: string;
+  itemId: string;
+  itemTitle: string;
+  buyerName: string;
+  shipCity: string;
+  shipState: string;
+  shipZip: string;
+  shipCountry: string;
+  transactionCurrency: string;
+  ebayCollectedTax: string;
+  itemPrice: string;
+  quantity: string;
+  itemSubtotal: string;
+  shippingAndHandling: string;
+  sellerCollectedTax: string;
+  discount: string;
+  payoutCurrency: string;
+  grossAmount: string;
+  fvfFixed: string;
+  fvfVariable: string;
+  belowStandardFee: string;
+  inadFee: string;
+  internationalFee: string;
+  depositProcessingFee: string;
+  regulatoryFee: string;
+  promotedListingFee: string;
+  charityDonation: string;
+  shippingLabels: string;
+  paymentDisputeFee: string;
+  expenses: string;
+  refunds: string;
+  orderEarnings: string;
+  yourCost: string;
+  netOrderEarnings: string;
 }
 
 function parseEbayDate(dateStr: string): string {
-  // "Feb 9, 2026" → "2026-02-09"
+  // Supports "24-Feb-25" and "Feb 9, 2026"
   const months: Record<string, string> = {
     Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
     Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12',
   };
+
+  // "24-Feb-25" format (day-Mon-YY)
+  const dmy = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const month = months[dmy[2]] || '01';
+    let year = dmy[3];
+    if (year.length === 2) year = (parseInt(year) >= 50 ? '19' : '20') + year;
+    return `${year}-${month}-${day}`;
+  }
+
+  // "Feb 9, 2026" format (legacy)
   const parts = dateStr.replace(',', '').split(/\s+/);
-  if (parts.length < 3) return dateStr;
-  const month = months[parts[0]] || '01';
-  const day = parts[1].padStart(2, '0');
-  const year = parts[2];
-  return `${year}-${month}-${day}`;
+  if (parts.length >= 3) {
+    const month = months[parts[0]] || '01';
+    const day = parts[1].padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
+
+  return dateStr;
 }
 
 function parseEbayRows(csvText: string): EbayRow[] {
   const text = csvText.replace(/^\uFEFF/, '');
   const lines = text.split('\n');
 
-  // Find the header line
+  // Find the header line — works for both report formats
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('Order creation date,Order number,Item ID')) {
+      headerIdx = i;
+      break;
+    }
+    // Legacy Transaction Report format
     if (lines[i].startsWith('Transaction creation date,Type,Order number')) {
       headerIdx = i;
       break;
@@ -371,28 +418,96 @@ function parseEbayRows(csvText: string): EbayRow[] {
   }
   if (headerIdx === -1) return [];
 
+  const isEarningsReport = lines[headerIdx].startsWith('Order creation date');
+
   const rows: EbayRow[] = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const f = parseCSVLine(line);
-    if (f.length < 38) continue;
 
-    rows.push({
-      date: f[0], type: f[1], orderNumber: f[2], legacyOrderId: f[3],
-      buyerUsername: f[4], buyerName: f[5],
-      city: f[6], state: f[7], zip: f[8], country: f[9],
-      netAmount: f[10], payoutCurrency: f[11], payoutDate: f[12],
-      payoutId: f[13], payoutMethod: f[14], payoutStatus: f[15], reasonForHold: f[16],
-      itemId: f[17], transactionId: f[18], itemTitle: f[19], customLabel: f[20],
-      quantity: f[21], itemSubtotal: f[22], shipping: f[23],
-      sellerCollectedTax: f[24], ebayCollectedTax: f[25],
-      fvfFixed: f[26], fvfVariable: f[27], regulatoryFee: f[28],
-      inadFee: f[29], belowStandardFee: f[30], internationalFee: f[31],
-      charityDonation: f[32], depositProcessingFee: f[33],
-      grossAmount: f[34], transactionCurrency: f[35], exchangeRate: f[36],
-      referenceId: f[37], description: f[38],
-    });
+    if (isEarningsReport) {
+      if (f.length < 33) continue;
+      rows.push({
+        orderDate: f[0],
+        orderNumber: f[1],
+        itemId: f[2],
+        itemTitle: f[3],
+        buyerName: f[4],
+        shipCity: f[5],
+        shipState: f[6],
+        shipZip: f[7],
+        shipCountry: f[8],
+        transactionCurrency: f[9],
+        ebayCollectedTax: f[10],
+        itemPrice: f[11],
+        quantity: f[12],
+        itemSubtotal: f[13],
+        shippingAndHandling: f[14],
+        sellerCollectedTax: f[15],
+        discount: f[16],
+        payoutCurrency: f[17],
+        grossAmount: f[18],
+        fvfFixed: f[19],
+        fvfVariable: f[20],
+        belowStandardFee: f[21],
+        inadFee: f[22],
+        internationalFee: f[23],
+        depositProcessingFee: f[24],
+        regulatoryFee: f[25],
+        promotedListingFee: f[26],
+        charityDonation: f[27],
+        shippingLabels: f[28],
+        paymentDisputeFee: f[29],
+        expenses: f[30],
+        refunds: f[31],
+        orderEarnings: f[32],
+        yourCost: f[33] || '--',
+        netOrderEarnings: f[34] || '--',
+      });
+    } else {
+      // Legacy Transaction Report — map into the same interface
+      if (f.length < 38) continue;
+      // Only process 'Order' type rows
+      if (f[1] !== 'Order') continue;
+      rows.push({
+        orderDate: f[0],
+        orderNumber: f[2],
+        itemId: f[17],
+        itemTitle: f[19],
+        buyerName: f[5],
+        shipCity: f[6],
+        shipState: f[7],
+        shipZip: f[8],
+        shipCountry: f[9],
+        transactionCurrency: f[35],
+        ebayCollectedTax: f[25],
+        itemPrice: '--',
+        quantity: f[21],
+        itemSubtotal: f[22],
+        shippingAndHandling: f[23],
+        sellerCollectedTax: f[24],
+        discount: '--',
+        payoutCurrency: f[11],
+        grossAmount: f[34],
+        fvfFixed: f[26],
+        fvfVariable: f[27],
+        belowStandardFee: f[30],
+        inadFee: f[29],
+        internationalFee: f[31],
+        depositProcessingFee: f[33],
+        regulatoryFee: f[28],
+        promotedListingFee: '--',
+        charityDonation: f[32],
+        shippingLabels: '--',
+        paymentDisputeFee: '--',
+        expenses: '--',
+        refunds: '--',
+        orderEarnings: '--',
+        yourCost: '--',
+        netOrderEarnings: '--',
+      });
+    }
   }
   return rows;
 }
@@ -403,37 +518,25 @@ function parseDollars(val: string): number {
 }
 
 // Build enriched technician notes from all available eBay fields
-function buildEbayNotes(first: EbayRow, items: EbayRow[], orderNumber: string): string {
+function buildEbayNotes(row: EbayRow, orderNumber: string): string {
   const lines: string[] = [`eBay Order: ${orderNumber}`];
   const add = (label: string, val: string | undefined) => {
     if (val && val !== '--' && val.trim()) lines.push(`${label}: ${val.trim()}`);
   };
-  add('Legacy Order ID', first.legacyOrderId);
-  add('Buyer Username', first.buyerUsername);
-  add('Payout Date', first.payoutDate);
-  add('Payout Method', first.payoutMethod);
-  add('Payout Status', first.payoutStatus);
-  add('Payout ID', first.payoutId);
-  add('Reason for Hold', first.reasonForHold);
-  add('Net Amount', first.netAmount);
-  add('Transaction Currency', first.transactionCurrency);
-  add('Exchange Rate', first.exchangeRate !== '1' ? first.exchangeRate : undefined);
-  add('Reference ID', first.referenceId);
-  add('Description', first.description);
-  // Per-item details
-  for (const item of items) {
-    if (!item.itemTitle || item.itemTitle === '--') continue;
-    const itemLines: string[] = [];
-    add('Item ID', item.itemId);
-    add('Transaction ID', item.transactionId);
-    add('Custom Label/SKU', item.customLabel);
-    if (item.sellerCollectedTax && item.sellerCollectedTax !== '--' && parseDollars(item.sellerCollectedTax) !== 0) {
-      add('Seller Collected Tax', item.sellerCollectedTax);
-    }
-    if (item.ebayCollectedTax && item.ebayCollectedTax !== '--' && parseDollars(item.ebayCollectedTax) !== 0) {
-      add('eBay Collected Tax', item.ebayCollectedTax);
-    }
-  }
+  add('Item ID', row.itemId);
+  add('Item Title', row.itemTitle);
+  add('Buyer', row.buyerName);
+  const addr = [row.shipCity, row.shipState, row.shipZip, row.shipCountry].filter(s => s && s !== '--').join(', ');
+  if (addr) lines.push(`Ship To: ${addr}`);
+  add('eBay Collected Tax', row.ebayCollectedTax);
+  add('Seller Collected Tax', row.sellerCollectedTax);
+  add('Discount', row.discount);
+  add('Gross Amount', row.grossAmount);
+  add('Shipping Labels', row.shippingLabels);
+  add('Promoted Listing Fee', row.promotedListingFee);
+  add('Payment Dispute Fee', row.paymentDisputeFee);
+  add('Refunds', row.refunds);
+  add('Order Earnings', row.orderEarnings);
   return lines.join('\n');
 }
 
@@ -441,6 +544,7 @@ async function importEbay(
   csvText: string, existingCustomers: Customer[], settings: ImportSettings,
 ): Promise<{ result: ImportResult }> {
   const rows = parseEbayRows(csvText);
+  if (rows.length === 0) throw new Error('No order rows found in this eBay CSV.');
   const db = await getDB();
   const now = new Date().toISOString();
   let invoiceNum = settings.nextInvoiceNumber;
@@ -472,125 +576,106 @@ async function importEbay(
     }
   }
 
-  // Process Order rows - each creates a customer + job + invoice + payment
-  const orderRows = rows.filter(r => r.type === 'Order' && r.buyerName && r.buyerName !== '--');
-
-  // Group orders by order number (multi-item orders)
-  const orderGroups = new Map<string, EbayRow[]>();
-  for (const row of orderRows) {
-    const key = row.orderNumber;
-    if (!orderGroups.has(key)) orderGroups.set(key, []);
-    orderGroups.get(key)!.push(row);
-  }
-
   // Load existing inventory items for deduplication
   const existingInventory = await db.getAll('inventoryItems');
   const inventoryResolver = new InventoryResolver(existingInventory, now);
 
-  for (const [orderNumber, items] of orderGroups) {
+  for (const row of rows) {
+    const orderNumber = row.orderNumber;
+    if (!orderNumber || orderNumber === '--') continue;
+    if (!row.buyerName || row.buyerName === '--') continue;
     if (existingOrderIds.has(orderNumber)) { skipped++; continue; }
 
-    const first = items[0];
-    const buyerName = first.buyerName;
-    const address = [first.city, first.state, first.zip, first.country].filter(s => s && s !== '--').join(', ');
-    const customer = resolver.resolve(buyerName, address, ['ebay'], 'eBay');
-    // Enrich customer notes with buyer username if available
-    if (first.buyerUsername && first.buyerUsername !== '--' && customer.notes && !customer.notes.includes(first.buyerUsername)) {
-      customer.notes = customer.notes ? `${customer.notes} | eBay username: ${first.buyerUsername}` : `eBay username: ${first.buyerUsername}`;
-    }
+    const address = [row.shipCity, row.shipState, row.shipZip, row.shipCountry].filter(s => s && s !== '--').join(', ');
+    const customer = resolver.resolve(row.buyerName, address, ['ebay'], 'eBay');
 
-    const dateISO = parseEbayDate(first.date);
+    const dateISO = parseEbayDate(row.orderDate);
     const invoiceNumber = `${settings.invoicePrefix}${invoiceNum}`;
     invoiceNum++;
     const jobId = uuidv4();
     const invoiceId = uuidv4();
     const paymentId = uuidv4();
 
-    // Build parts from line items — expand known products into component parts
+    // Build parts — expand known products into component parts (BOM)
     const parts: { id: string; name: string; quantity: number; unitCostCents: number; unitPriceCents: number; source: 'inventory' | 'customer-provided'; inventoryItemId?: string }[] = [];
 
-    for (const item of items) {
-      if (!item.itemTitle || item.itemTitle === '--') continue;
-      const qty = parseInt(item.quantity) || 1;
-      const salePriceCents = Math.round(parseDollars(item.itemSubtotal) * 100);
-      const perUnitSaleCents = Math.round(salePriceCents / qty);
+    const itemTitle = row.itemTitle || 'eBay sale';
+    const qty = parseInt(row.quantity) || 1;
+    const salePriceCents = Math.round(parseDollars(row.itemSubtotal) * 100);
+    const perUnitSaleCents = Math.round(salePriceCents / qty);
 
-      const mapping = findProductMapping(item.itemTitle);
+    if (itemTitle !== '--' && itemTitle !== 'Multi-Item') {
+      const mapping = findProductMapping(itemTitle);
       if (mapping) {
-        // Expand into component parts — distribute sale price proportionally by cost
         const totalComponentCost = mapping.components.reduce((s, c) => s + c.unitCostCents, 0);
-
         for (const comp of mapping.components) {
           const invItem = inventoryResolver.resolve(comp);
-          // Proportional share of sale price based on cost ratio
           const pricePortion = totalComponentCost > 0
             ? Math.round((comp.unitCostCents / totalComponentCost) * perUnitSaleCents)
             : Math.round(perUnitSaleCents / mapping.components.length);
-
           parts.push({
-            id: uuidv4(),
-            name: comp.name,
-            quantity: qty,
-            unitCostCents: comp.unitCostCents,
-            unitPriceCents: pricePortion,
-            source: 'inventory' as const,
-            inventoryItemId: invItem.id,
+            id: uuidv4(), name: comp.name, quantity: qty,
+            unitCostCents: comp.unitCostCents, unitPriceCents: pricePortion,
+            source: 'inventory' as const, inventoryItemId: invItem.id,
           });
         }
       } else {
-        // No mapping — keep as generic inventory part (cost unknown)
         parts.push({
-          id: uuidv4(),
-          name: item.itemTitle,
-          quantity: qty,
-          unitCostCents: 0,
-          unitPriceCents: Math.round(parseDollars(item.itemSubtotal) * 100),
+          id: uuidv4(), name: itemTitle, quantity: qty,
+          unitCostCents: 0, unitPriceCents: salePriceCents,
           source: 'inventory' as const,
         });
       }
+    } else if (salePriceCents > 0) {
+      // Multi-Item or unknown — record as generic sale
+      parts.push({
+        id: uuidv4(), name: 'eBay Multi-Item Sale', quantity: 1,
+        unitCostCents: 0, unitPriceCents: salePriceCents,
+        source: 'inventory' as const,
+      });
     }
 
-    // Calculate totals from the row that has netAmount (the summary row)
-    const summaryRow = items.find(i => i.netAmount && i.netAmount !== '--') || first;
-    const grossCents = Math.abs(Math.round(parseDollars(summaryRow.grossAmount) * 100));
-    const itemSubtotalCents = parts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
-    const shippingCents = Math.round(parseDollars(summaryRow.shipping) * 100);
-
-    // Add shipping as a customer-provided pass-through part (buyer pays, not our income/expense)
+    // Shipping as pass-through
+    const shippingCents = Math.abs(Math.round(parseDollars(row.shippingAndHandling) * 100));
     if (shippingCents > 0) {
       parts.push({
-        id: uuidv4(),
-        name: 'Shipping & handling',
-        quantity: 1,
-        unitCostCents: shippingCents,
-        unitPriceCents: shippingCents,
+        id: uuidv4(), name: 'Shipping & handling', quantity: 1,
+        unitCostCents: shippingCents, unitPriceCents: shippingCents,
         source: 'customer-provided' as const,
       });
     }
 
-    // eBay fees (from the order row itself - FVF fees + other fees)
-    const fvfFixed = Math.abs(Math.round(parseDollars(summaryRow.fvfFixed) * 100));
-    const fvfVariable = Math.abs(Math.round(parseDollars(summaryRow.fvfVariable) * 100));
-    const regulatoryFee = Math.abs(Math.round(parseDollars(summaryRow.regulatoryFee) * 100));
-    const intlFee = Math.abs(Math.round(parseDollars(summaryRow.internationalFee) * 100));
-    const charityDonation = Math.abs(Math.round(parseDollars(summaryRow.charityDonation) * 100));
-    const depositFee = Math.abs(Math.round(parseDollars(summaryRow.depositProcessingFee) * 100));
-    const inadFee = Math.abs(Math.round(parseDollars(summaryRow.inadFee) * 100));
-    const belowStdFee = Math.abs(Math.round(parseDollars(summaryRow.belowStandardFee) * 100));
-    const orderFees = fvfFixed + fvfVariable + regulatoryFee + intlFee + charityDonation + depositFee + inadFee + belowStdFee;
+    // Calculate fees from individual columns
+    const fvfFixed = Math.abs(Math.round(parseDollars(row.fvfFixed) * 100));
+    const fvfVariable = Math.abs(Math.round(parseDollars(row.fvfVariable) * 100));
+    const belowStdFee = Math.abs(Math.round(parseDollars(row.belowStandardFee) * 100));
+    const inadFee = Math.abs(Math.round(parseDollars(row.inadFee) * 100));
+    const intlFee = Math.abs(Math.round(parseDollars(row.internationalFee) * 100));
+    const depositFee = Math.abs(Math.round(parseDollars(row.depositProcessingFee) * 100));
+    const regulatoryFee = Math.abs(Math.round(parseDollars(row.regulatoryFee) * 100));
+    const promotedListingFee = Math.abs(Math.round(parseDollars(row.promotedListingFee) * 100));
+    const charityDonation = Math.abs(Math.round(parseDollars(row.charityDonation) * 100));
+    const paymentDisputeFee = Math.abs(Math.round(parseDollars(row.paymentDisputeFee) * 100));
+    const shippingLabelCost = Math.abs(Math.round(parseDollars(row.shippingLabels) * 100));
+    const orderFees = fvfFixed + fvfVariable + belowStdFee + inadFee + intlFee + depositFee + regulatoryFee + promotedListingFee + charityDonation + paymentDisputeFee;
 
-    const totalCents = grossCents || (itemSubtotalCents + shippingCents);
+    const grossCents = Math.abs(Math.round(parseDollars(row.grossAmount) * 100));
+    const itemSubtotalCents = parts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
+    const totalCents = grossCents || itemSubtotalCents;
+
+    // Handle refunds
+    const refundCents = Math.abs(Math.round(parseDollars(row.refunds) * 100));
+    const isRefunded = refundCents > 0 && refundCents >= totalCents;
 
     const job: Job = {
       id: jobId, customerId: customer.id, dateOfService: dateISO,
-      problemDescription: items.map(i => i.itemTitle).filter(t => t && t !== '--').join(', ') || 'eBay sale',
+      problemDescription: itemTitle !== '--' ? itemTitle : 'eBay Multi-Item Sale',
       workPerformed: 'eBay sale',
       laborHours: 0, laborRateCents: settings.defaultLaborRateCents,
       parts,
-      miscFeesCents: 0,
-      miscFeesDescription: '',
-      taxRate: 0, status: 'paid',
-      technicianNotes: buildEbayNotes(first, items, orderNumber),
+      miscFeesCents: 0, miscFeesDescription: '',
+      taxRate: 0, status: isRefunded ? 'completed' : 'paid',
+      technicianNotes: buildEbayNotes(row, orderNumber),
       createdAt: now, updatedAt: now, invoiceId,
     };
 
@@ -599,35 +684,60 @@ async function importEbay(
     const partsTotalCents = inventoryParts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
     const passThroughPartsCents = passThroughParts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
 
+    const paidAmount = isRefunded ? 0 : totalCents;
+
     const invoice: Invoice = {
       id: invoiceId, invoiceNumber, jobId, customerId: customer.id,
       invoiceDate: dateISO, dueDate: dateISO,
       laborTotalCents: 0, partsTotalCents, passThroughPartsCents,
       miscFeesCents: 0, subtotalCents: partsTotalCents + passThroughPartsCents,
       taxCents: 0, totalCents,
-      incomeAmountCents: partsTotalCents, // Only inventory parts count as income
-      paidAmountCents: totalCents, paymentStatus: 'paid',
+      incomeAmountCents: partsTotalCents,
+      paidAmountCents: paidAmount,
+      paymentStatus: isRefunded ? 'unpaid' : 'paid',
       paymentMethod: 'eBay', paymentDate: dateISO,
       payments: [], createdAt: now, updatedAt: now,
     };
 
-    const payment: Payment = {
-      id: paymentId, invoiceId, amountCents: totalCents, type: 'payment',
-      method: 'eBay', notes: `eBay Order: ${orderNumber}`,
-      date: dateISO, createdAt: now,
-    };
-    invoice.payments = [payment];
+    const payments: Payment[] = [];
+    if (!isRefunded) {
+      const payment: Payment = {
+        id: paymentId, invoiceId, amountCents: totalCents, type: 'payment',
+        method: 'eBay', notes: `eBay Order: ${orderNumber}`,
+        date: dateISO, createdAt: now,
+      };
+      payments.push(payment);
+      newPayments.push(payment);
+    }
+    // Record refund as a separate payment entry
+    if (refundCents > 0) {
+      const refundPayment: Payment = {
+        id: uuidv4(), invoiceId, amountCents: refundCents, type: 'refund',
+        method: 'eBay', notes: `eBay Refund - Order: ${orderNumber}`,
+        date: dateISO, createdAt: now,
+      };
+      payments.push(refundPayment);
+      newPayments.push(refundPayment);
+    }
+    invoice.payments = payments;
 
     newJobs.push(job);
     newInvoices.push(invoice);
-    newPayments.push(payment);
 
-    // Record order-level fees as expense
-    if (orderFees > 0) {
+    // Record selling fees as expense
+    if (orderFees > 0 && !existingFeeIds.has(`ORDER-${orderNumber}`)) {
       const expId = uuidv4();
+      const feeDetails: string[] = [];
+      if (fvfFixed > 0) feeDetails.push(`FVF Fixed: $${(fvfFixed / 100).toFixed(2)}`);
+      if (fvfVariable > 0) feeDetails.push(`FVF Variable: $${(fvfVariable / 100).toFixed(2)}`);
+      if (promotedListingFee > 0) feeDetails.push(`Promoted Listing: $${(promotedListingFee / 100).toFixed(2)}`);
+      if (intlFee > 0) feeDetails.push(`International: $${(intlFee / 100).toFixed(2)}`);
+      if (regulatoryFee > 0) feeDetails.push(`Regulatory: $${(regulatoryFee / 100).toFixed(2)}`);
+      if (paymentDisputeFee > 0) feeDetails.push(`Payment Dispute: $${(paymentDisputeFee / 100).toFixed(2)}`);
+
       newExpenses.push({
         id: expId, date: dateISO, vendor: 'eBay',
-        category: 'misc', description: `eBay selling fees (FVF + regulatory)`,
+        category: 'misc', description: `eBay selling fees (${feeDetails.join(', ')})`,
         amountCents: orderFees, jobId, customerId: customer.id,
         notes: `eBay Fee: ORDER-${orderNumber}`,
         createdAt: now, updatedAt: now,
@@ -639,45 +749,32 @@ async function importEbay(
       });
     }
 
+    // Record shipping label cost as separate expense
+    if (shippingLabelCost > 0 && !existingFeeIds.has(`SHIP-${orderNumber}`)) {
+      const expId = uuidv4();
+      newExpenses.push({
+        id: expId, date: dateISO, vendor: 'eBay',
+        category: 'misc', description: `eBay shipping label`,
+        amountCents: shippingLabelCost, jobId, customerId: customer.id,
+        notes: `eBay Fee: SHIP-${orderNumber}`,
+        createdAt: now, updatedAt: now,
+      });
+      auditLogs.push({
+        id: uuidv4(), entityType: 'expense' as any, entityId: expId, action: 'created',
+        details: `eBay shipping label $${(shippingLabelCost / 100).toFixed(2)} - Order: ${orderNumber}`,
+        timestamp: now,
+      });
+    }
+
     auditLogs.push(
       { id: uuidv4(), entityType: 'job', entityId: jobId, action: 'created',
-        details: `Job created via eBay CSV import - Customer: ${buyerName}, Gross: $${(totalCents / 100).toFixed(2)}, Order: ${orderNumber}`, timestamp: now },
+        details: `Job created via eBay CSV import - Customer: ${row.buyerName}, Gross: $${(totalCents / 100).toFixed(2)}, Order: ${orderNumber}`, timestamp: now },
       { id: uuidv4(), entityType: 'invoice', entityId: invoiceId, action: 'created',
         details: `Invoice ${invoiceNumber} created via eBay CSV import - $${(totalCents / 100).toFixed(2)}`, timestamp: now },
       { id: uuidv4(), entityType: 'payment', entityId: paymentId, action: 'paid',
         details: `Payment recorded via eBay CSV import - $${(totalCents / 100).toFixed(2)}, Method: eBay`, timestamp: now },
     );
   }
-
-  // Process "Other fee" rows (Promoted Listings, etc.) as expenses
-  const feeRows = rows.filter(r => r.type === 'Other fee' && r.description && r.description !== '--');
-  for (const row of feeRows) {
-    const feeRefId = row.description.split(',')[0] || row.transactionId || row.orderNumber;
-    const feeKey = `FEE-${feeRefId}`;
-    if (existingFeeIds.has(feeKey)) continue;
-
-    const feeCents = Math.abs(Math.round(parseDollars(row.grossAmount) * 100));
-    if (feeCents === 0) continue;
-
-    const dateISO = parseEbayDate(row.date);
-    const expId = uuidv4();
-    const feeDescription = row.description.replace(/\s+$/, '') || 'eBay fee';
-
-    newExpenses.push({
-      id: expId, date: dateISO, vendor: 'eBay',
-      category: 'misc', description: feeDescription,
-      amountCents: feeCents,
-      notes: `eBay Fee: ${feeKey}`,
-      createdAt: now, updatedAt: now,
-    });
-    auditLogs.push({
-      id: uuidv4(), entityType: 'expense' as any, entityId: expId, action: 'created',
-      details: `eBay fee $${(feeCents / 100).toFixed(2)} - ${feeDescription}`,
-      timestamp: now,
-    });
-  }
-
-  // Shipping labels are pass-through (customer-paid) — not recorded as expenses
 
   // Persist (including any new inventory items)
   const allAuditLogs = [...resolver.auditLogs, ...inventoryResolver.auditLogs, ...auditLogs];
@@ -691,7 +788,7 @@ async function importEbay(
       jobsCreated: newJobs.length,
       paymentsRecorded: newPayments.length,
       expensesCreated: newExpenses.length,
-      totalRevenueCents: newPayments.reduce((s, p) => s + p.amountCents, 0),
+      totalRevenueCents: newPayments.filter(p => p.type === 'payment').reduce((s, p) => s + p.amountCents, 0),
       totalFeesCents: newExpenses.reduce((s, e) => s + e.amountCents, 0),
       skipped,
     },
