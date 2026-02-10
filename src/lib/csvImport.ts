@@ -645,7 +645,7 @@ async function importEbay(
       });
     }
 
-    // Calculate fees from individual columns
+    // Calculate fees — use the "Expenses" column as authoritative total
     const fvfFixed = Math.abs(Math.round(parseDollars(row.fvfFixed) * 100));
     const fvfVariable = Math.abs(Math.round(parseDollars(row.fvfVariable) * 100));
     const belowStdFee = Math.abs(Math.round(parseDollars(row.belowStandardFee) * 100));
@@ -657,7 +657,10 @@ async function importEbay(
     const charityDonation = Math.abs(Math.round(parseDollars(row.charityDonation) * 100));
     const paymentDisputeFee = Math.abs(Math.round(parseDollars(row.paymentDisputeFee) * 100));
     const shippingLabelCost = Math.abs(Math.round(parseDollars(row.shippingLabels) * 100));
-    const orderFees = fvfFixed + fvfVariable + belowStdFee + inadFee + intlFee + depositFee + regulatoryFee + promotedListingFee + charityDonation + paymentDisputeFee;
+    // Use eBay's "Expenses" total (includes all fees + shipping labels) as the authoritative amount
+    const expensesTotal = Math.abs(Math.round(parseDollars(row.expenses) * 100));
+    // Separate: fees only (expenses minus shipping labels)
+    const orderFees = expensesTotal > shippingLabelCost ? expensesTotal - shippingLabelCost : expensesTotal;
 
     const grossCents = Math.abs(Math.round(parseDollars(row.grossAmount) * 100));
     const itemSubtotalCents = parts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
