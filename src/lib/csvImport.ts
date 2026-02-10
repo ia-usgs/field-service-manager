@@ -419,6 +419,7 @@ function buildEbayNotes(first: EbayRow, items: EbayRow[], orderNumber: string): 
   add('Transaction Currency', first.transactionCurrency);
   add('Exchange Rate', first.exchangeRate !== '1' ? first.exchangeRate : undefined);
   add('Reference ID', first.referenceId);
+  add('Description', first.description);
   // Per-item details
   for (const item of items) {
     if (!item.itemTitle || item.itemTitle === '--') continue;
