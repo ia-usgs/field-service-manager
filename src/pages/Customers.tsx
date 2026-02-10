@@ -8,7 +8,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { centsToDollars } from "@/lib/db";
 import { formatPhoneNumber } from "@/lib/utils";
-import { importPayPalCSV } from "@/lib/paypalImport";
+import { importCSV } from "@/lib/csvImport";
 import { Customer } from "@/types";
 import { toast } from "@/hooks/use-toast";
 
@@ -112,18 +112,20 @@ export default function Customers() {
       const text = await file.text();
       if (!settings) throw new Error("Settings not loaded");
 
-      const { result } = await importPayPalCSV(text, customers, settings);
+      const { result } = await importCSV(text, customers, settings);
 
       // Refresh store state from DB to pick up all new records
       await initialize();
 
+      const source = result.source === 'ebay' ? 'eBay' : 'PayPal';
+      const feesMsg = result.expensesCreated > 0 ? ` ${result.expensesCreated} fees ($${(result.totalFeesCents / 100).toFixed(2)}) as expenses.` : '';
       toast({
-        title: "PayPal Import Complete",
-        description: `${result.jobsCreated} jobs, ${result.paymentsRecorded} payments ($${(result.totalAmountCents / 100).toFixed(2)}). ${result.customersCreated} new customers. ${result.skipped > 0 ? `${result.skipped} duplicates skipped.` : ""}`,
+        title: `${source} Import Complete`,
+        description: `${result.jobsCreated} jobs, ${result.paymentsRecorded} payments ($${(result.totalRevenueCents / 100).toFixed(2)}). ${result.customersCreated} new customers.${feesMsg}${result.skipped > 0 ? ` ${result.skipped} duplicates skipped.` : ""}`,
       });
     } catch (error) {
       toast({
-        title: "PayPal Import Failed",
+        title: "CSV Import Failed",
         description: error instanceof Error ? error.message : "Failed to parse CSV file",
         variant: "destructive",
       });
@@ -295,7 +297,7 @@ export default function Customers() {
               className="btn-secondary flex items-center gap-2"
             >
               <CreditCard className="w-4 h-4" />
-              {isPayPalImporting ? "Importing..." : "PayPal CSV"}
+              {isPayPalImporting ? "Importing..." : "PayPal / eBay"}
             </button>
             <button
               onClick={handleImportClick}
