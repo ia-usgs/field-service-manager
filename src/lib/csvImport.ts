@@ -316,6 +316,32 @@ async function importPayPal(
     );
   }
 
+  // Process withdrawal rows for fees (PayPal charges fees on withdrawals, not on payments)
+  const withdrawalRows = rows.filter(r =>
+    (r.type === 'User Initiated Withdrawal' || r.type === 'Withdraw Funds to a Bank Account') &&
+    parseFloat(r.fees) < 0
+  );
+  for (const row of withdrawalRows) {
+    if (existingExpenseTxIds.has(row.transactionId)) continue;
+    const feeCents = Math.abs(Math.round(parseFloat(row.fees) * 100));
+    if (feeCents === 0) continue;
+    const dateISO = parseMMDDYYYY(row.date);
+    const expenseId = uuidv4();
+    newExpenses.push({
+      id: expenseId, date: dateISO, vendor: 'PayPal',
+      category: 'misc', description: `PayPal withdrawal fee`,
+      amountCents: feeCents,
+      notes: `PayPal TX: ${row.transactionId}`,
+      createdAt: now, updatedAt: now,
+    });
+    auditLogs.push({
+      id: uuidv4(), entityType: 'expense' as any, entityId: expenseId,
+      action: 'created',
+      details: `PayPal withdrawal fee $${(feeCents / 100).toFixed(2)} recorded - TX: ${row.transactionId}`,
+      timestamp: now,
+    });
+  }
+
   // Persist
   const allAuditLogs = [...resolver.auditLogs, ...auditLogs];
   await persistAll(db, resolver.newCustomers, newJobs, newInvoices, newPayments, newExpenses, allAuditLogs, invoiceNum);
