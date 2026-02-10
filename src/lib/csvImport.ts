@@ -328,13 +328,19 @@ async function importPayPal(
 // ─── eBay Import ─────────────────────────────────────────────────────
 
 interface EbayRow {
-  date: string; type: string; orderNumber: string; buyerUsername: string;
-  buyerName: string; city: string; state: string; zip: string; country: string;
-  netAmount: string; itemId: string; transactionId: string; itemTitle: string;
+  date: string; type: string; orderNumber: string; legacyOrderId: string;
+  buyerUsername: string; buyerName: string;
+  city: string; state: string; zip: string; country: string;
+  netAmount: string; payoutCurrency: string; payoutDate: string;
+  payoutId: string; payoutMethod: string; payoutStatus: string; reasonForHold: string;
+  itemId: string; transactionId: string; itemTitle: string; customLabel: string;
   quantity: string; itemSubtotal: string; shipping: string;
+  sellerCollectedTax: string; ebayCollectedTax: string;
   fvfFixed: string; fvfVariable: string; regulatoryFee: string;
   inadFee: string; belowStandardFee: string; internationalFee: string;
-  grossAmount: string; description: string;
+  charityDonation: string; depositProcessingFee: string;
+  grossAmount: string; transactionCurrency: string; exchangeRate: string;
+  referenceId: string; description: string;
 }
 
 function parseEbayDate(dateStr: string): string {
@@ -373,13 +379,19 @@ function parseEbayRows(csvText: string): EbayRow[] {
     if (f.length < 38) continue;
 
     rows.push({
-      date: f[0], type: f[1], orderNumber: f[2], buyerUsername: f[4],
-      buyerName: f[5], city: f[6], state: f[7], zip: f[8], country: f[9],
-      netAmount: f[10], itemId: f[17], transactionId: f[18], itemTitle: f[19],
+      date: f[0], type: f[1], orderNumber: f[2], legacyOrderId: f[3],
+      buyerUsername: f[4], buyerName: f[5],
+      city: f[6], state: f[7], zip: f[8], country: f[9],
+      netAmount: f[10], payoutCurrency: f[11], payoutDate: f[12],
+      payoutId: f[13], payoutMethod: f[14], payoutStatus: f[15], reasonForHold: f[16],
+      itemId: f[17], transactionId: f[18], itemTitle: f[19], customLabel: f[20],
       quantity: f[21], itemSubtotal: f[22], shipping: f[23],
+      sellerCollectedTax: f[24], ebayCollectedTax: f[25],
       fvfFixed: f[26], fvfVariable: f[27], regulatoryFee: f[28],
       inadFee: f[29], belowStandardFee: f[30], internationalFee: f[31],
-      grossAmount: f[34], description: f[37],
+      charityDonation: f[32], depositProcessingFee: f[33],
+      grossAmount: f[34], transactionCurrency: f[35], exchangeRate: f[36],
+      referenceId: f[37], description: f[38],
     });
   }
   return rows;
@@ -388,6 +400,40 @@ function parseEbayRows(csvText: string): EbayRow[] {
 function parseDollars(val: string): number {
   const cleaned = val.replace(/[^0-9.\-]/g, '');
   return cleaned ? parseFloat(cleaned) : 0;
+}
+
+// Build enriched technician notes from all available eBay fields
+function buildEbayNotes(first: EbayRow, items: EbayRow[], orderNumber: string): string {
+  const lines: string[] = [`eBay Order: ${orderNumber}`];
+  const add = (label: string, val: string | undefined) => {
+    if (val && val !== '--' && val.trim()) lines.push(`${label}: ${val.trim()}`);
+  };
+  add('Legacy Order ID', first.legacyOrderId);
+  add('Buyer Username', first.buyerUsername);
+  add('Payout Date', first.payoutDate);
+  add('Payout Method', first.payoutMethod);
+  add('Payout Status', first.payoutStatus);
+  add('Payout ID', first.payoutId);
+  add('Reason for Hold', first.reasonForHold);
+  add('Net Amount', first.netAmount);
+  add('Transaction Currency', first.transactionCurrency);
+  add('Exchange Rate', first.exchangeRate !== '1' ? first.exchangeRate : undefined);
+  add('Reference ID', first.referenceId);
+  // Per-item details
+  for (const item of items) {
+    if (!item.itemTitle || item.itemTitle === '--') continue;
+    const itemLines: string[] = [];
+    add('Item ID', item.itemId);
+    add('Transaction ID', item.transactionId);
+    add('Custom Label/SKU', item.customLabel);
+    if (item.sellerCollectedTax && item.sellerCollectedTax !== '--' && parseDollars(item.sellerCollectedTax) !== 0) {
+      add('Seller Collected Tax', item.sellerCollectedTax);
+    }
+    if (item.ebayCollectedTax && item.ebayCollectedTax !== '--' && parseDollars(item.ebayCollectedTax) !== 0) {
+      add('eBay Collected Tax', item.ebayCollectedTax);
+    }
+  }
+  return lines.join('\n');
 }
 
 async function importEbay(
@@ -447,6 +493,10 @@ async function importEbay(
     const buyerName = first.buyerName;
     const address = [first.city, first.state, first.zip, first.country].filter(s => s && s !== '--').join(', ');
     const customer = resolver.resolve(buyerName, address, ['ebay'], 'eBay');
+    // Enrich customer notes with buyer username if available
+    if (first.buyerUsername && first.buyerUsername !== '--' && customer.notes && !customer.notes.includes(first.buyerUsername)) {
+      customer.notes = customer.notes ? `${customer.notes} | eBay username: ${first.buyerUsername}` : `eBay username: ${first.buyerUsername}`;
+    }
 
     const dateISO = parseEbayDate(first.date);
     const invoiceNumber = `${settings.invoicePrefix}${invoiceNum}`;
@@ -517,12 +567,16 @@ async function importEbay(
       });
     }
 
-    // eBay fees (from the order row itself - FVF fees)
+    // eBay fees (from the order row itself - FVF fees + other fees)
     const fvfFixed = Math.abs(Math.round(parseDollars(summaryRow.fvfFixed) * 100));
     const fvfVariable = Math.abs(Math.round(parseDollars(summaryRow.fvfVariable) * 100));
     const regulatoryFee = Math.abs(Math.round(parseDollars(summaryRow.regulatoryFee) * 100));
     const intlFee = Math.abs(Math.round(parseDollars(summaryRow.internationalFee) * 100));
-    const orderFees = fvfFixed + fvfVariable + regulatoryFee + intlFee;
+    const charityDonation = Math.abs(Math.round(parseDollars(summaryRow.charityDonation) * 100));
+    const depositFee = Math.abs(Math.round(parseDollars(summaryRow.depositProcessingFee) * 100));
+    const inadFee = Math.abs(Math.round(parseDollars(summaryRow.inadFee) * 100));
+    const belowStdFee = Math.abs(Math.round(parseDollars(summaryRow.belowStandardFee) * 100));
+    const orderFees = fvfFixed + fvfVariable + regulatoryFee + intlFee + charityDonation + depositFee + inadFee + belowStdFee;
 
     const totalCents = grossCents || (itemSubtotalCents + shippingCents);
 
@@ -535,7 +589,7 @@ async function importEbay(
       miscFeesCents: 0,
       miscFeesDescription: '',
       taxRate: 0, status: 'paid',
-      technicianNotes: `eBay Order: ${orderNumber}`,
+      technicianNotes: buildEbayNotes(first, items, orderNumber),
       createdAt: now, updatedAt: now, invoiceId,
     };
 
