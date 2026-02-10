@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, Mail, Phone, MapPin, Upload, Users } from "lucide-react";
+import { Plus, Search, Mail, Phone, MapPin, Upload, Users, CreditCard } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -8,6 +8,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { CustomerDialog } from "@/components/customers/CustomerDialog";
 import { centsToDollars } from "@/lib/db";
 import { formatPhoneNumber } from "@/lib/utils";
+import { importPayPalCSV } from "@/lib/paypalImport";
 import { Customer } from "@/types";
 import { toast } from "@/hooks/use-toast";
 
@@ -28,10 +29,12 @@ interface ImportedCustomerData {
 
 export default function Customers() {
   const navigate = useNavigate();
-  const { customers, jobs, invoices, addCustomer } = useStore();
+  const { customers, jobs, invoices, payments, settings, addCustomer, initialize } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isPayPalImporting, setIsPayPalImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const paypalFileInputRef = useRef<HTMLInputElement>(null);
 
   const activeCustomers = customers.filter((c) => !c.archived);
 
@@ -92,6 +95,42 @@ export default function Customers() {
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handlePayPalImportClick = () => {
+    paypalFileInputRef.current?.click();
+  };
+
+  const handlePayPalFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsPayPalImporting(true);
+    try {
+      const text = await file.text();
+      if (!settings) throw new Error("Settings not loaded");
+
+      const { result } = await importPayPalCSV(text, customers, settings);
+
+      // Refresh store state from DB to pick up all new records
+      await initialize();
+
+      toast({
+        title: "PayPal Import Complete",
+        description: `${result.jobsCreated} jobs, ${result.paymentsRecorded} payments ($${(result.totalAmountCents / 100).toFixed(2)}). ${result.customersCreated} new customers. ${result.skipped > 0 ? `${result.skipped} duplicates skipped.` : ""}`,
+      });
+    } catch (error) {
+      toast({
+        title: "PayPal Import Failed",
+        description: error instanceof Error ? error.message : "Failed to parse CSV file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPayPalImporting(false);
+      if (paypalFileInputRef.current) {
+        paypalFileInputRef.current.value = "";
       }
     }
   };
@@ -243,6 +282,21 @@ export default function Customers() {
               onChange={handleFileChange}
               className="hidden"
             />
+            <input
+              ref={paypalFileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handlePayPalFileChange}
+              className="hidden"
+            />
+            <button
+              onClick={handlePayPalImportClick}
+              disabled={isPayPalImporting}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <CreditCard className="w-4 h-4" />
+              {isPayPalImporting ? "Importing..." : "PayPal CSV"}
+            </button>
             <button
               onClick={handleImportClick}
               disabled={isImporting}
