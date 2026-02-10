@@ -119,9 +119,12 @@ export default function Customers() {
 
       const source = result.source === 'ebay' ? 'eBay' : 'PayPal';
       const feesMsg = result.expensesCreated > 0 ? ` ${result.expensesCreated} fees ($${(result.totalFeesCents / 100).toFixed(2)}) as expenses.` : '';
+      const ebayEarnings = result.source === 'ebay' && result.grossAmountCents != null
+        ? `\nGross: $${(result.grossAmountCents / 100).toFixed(2)} | Expenses: -$${(Math.abs(result.totalExpensesCents!) / 100).toFixed(2)} | Refunds: -$${(Math.abs(result.totalRefundsCents!) / 100).toFixed(2)} | Earnings: $${(result.orderEarningsCents! / 100).toFixed(2)}`
+        : '';
       toast({
         title: `${source} Import Complete`,
-        description: `${result.jobsCreated} jobs, ${result.paymentsRecorded} payments ($${(result.totalRevenueCents / 100).toFixed(2)}). ${result.customersCreated} new customers.${feesMsg}${result.skipped > 0 ? ` ${result.skipped} duplicates skipped.` : ""}`,
+        description: `${result.jobsCreated} jobs, ${result.paymentsRecorded} payments. ${result.customersCreated} new customers.${feesMsg}${result.skipped > 0 ? ` ${result.skipped} duplicates skipped.` : ""}${ebayEarnings}`,
       });
     } catch (error) {
       toast({

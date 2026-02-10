@@ -77,6 +77,11 @@ export interface ImportResult {
   totalRevenueCents: number;
   totalFeesCents: number;
   skipped: number;
+  // eBay-specific summary (matches eBay's Order Earnings summary)
+  grossAmountCents?: number;
+  totalExpensesCents?: number;
+  totalRefundsCents?: number;
+  orderEarningsCents?: number;
 }
 
 interface ImportSettings {
@@ -556,6 +561,19 @@ async function importEbay(
   const newExpenses: Expense[] = [];
   const auditLogs: AuditLog[] = [];
   let skipped = 0;
+  // eBay summary accumulators (sum ALL rows, including skipped — to match eBay's report totals)
+  let sumGrossCents = 0;
+  let sumExpensesCents = 0;
+  let sumRefundsCents = 0;
+  let sumEarningsCents = 0;
+
+  // Accumulate eBay summary from ALL rows (before dedup filtering)
+  for (const row of rows) {
+    sumGrossCents += Math.round(parseDollars(row.grossAmount) * 100);
+    sumExpensesCents += Math.round(parseDollars(row.expenses) * 100); // negative values
+    sumRefundsCents += Math.round(parseDollars(row.refunds) * 100); // negative values
+    sumEarningsCents += Math.round(parseDollars(row.orderEarnings) * 100);
+  }
 
   // Check for duplicate orders
   const existingOrderIds = new Set<string>();
@@ -794,6 +812,10 @@ async function importEbay(
       totalRevenueCents: newPayments.filter(p => p.type === 'payment').reduce((s, p) => s + p.amountCents, 0),
       totalFeesCents: newExpenses.reduce((s, e) => s + e.amountCents, 0),
       skipped,
+      grossAmountCents: sumGrossCents,
+      totalExpensesCents: sumExpensesCents, // negative
+      totalRefundsCents: sumRefundsCents, // negative
+      orderEarningsCents: sumEarningsCents,
     },
   };
 }
