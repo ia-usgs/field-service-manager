@@ -1,6 +1,48 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Customer, Job, Invoice, Payment, Expense, AuditLog } from '@/types';
+import { Customer, Job, Invoice, Payment, Expense, AuditLog, InventoryItem } from '@/types';
 import { getDB } from '@/lib/db';
+
+// ─── Product-to-Components Mapping ──────────────────────────────────
+// Maps eBay product titles to their bill-of-materials (component parts with costs).
+// During import, matching items are expanded into individual component parts
+// so that profit = sale price − sum of component costs.
+
+interface ComponentDef {
+  name: string;
+  unitCostCents: number;
+  category: string;
+}
+
+interface ProductMapping {
+  keywords: string[];  // lowercase keywords to match against item title
+  components: ComponentDef[];
+}
+
+const PRODUCT_COMPONENTS: ProductMapping[] = [
+  {
+    keywords: ['xeno', 'wifi companion'],
+    components: [
+      { name: 'Raspberry Pi 3B', unitCostCents: 5800, category: 'Electronics' },
+      { name: 'E-Ink Display', unitCostCents: 4000, category: 'Displays' },
+      { name: 'Micro SD Card', unitCostCents: 1000, category: 'Storage' },
+    ],
+  },
+  {
+    keywords: ['bjorn'],
+    components: [
+      { name: 'Raspberry Pi Zero W', unitCostCents: 3000, category: 'Electronics' },
+      { name: 'E-Ink Display', unitCostCents: 4000, category: 'Displays' },
+      { name: 'Micro SD Card', unitCostCents: 1000, category: 'Storage' },
+    ],
+  },
+  {
+    keywords: ['netgotchi'],
+    components: [
+      { name: 'ESP32', unitCostCents: 600, category: 'Electronics' },
+      { name: '1.3 Inch IIC I2C OLED Display Module 128x64 SH1106', unitCostCents: 400, category: 'Displays' },
+    ],
+  },
+];
 
 // ─── CSV Detection ───────────────────────────────────────────────────
 
@@ -394,6 +436,10 @@ async function importEbay(
     orderGroups.get(key)!.push(row);
   }
 
+  // Load existing inventory items for deduplication
+  const existingInventory = await db.getAll('inventoryItems');
+  const inventoryResolver = new InventoryResolver(existingInventory, now);
+
   for (const [orderNumber, items] of orderGroups) {
     if (existingOrderIds.has(orderNumber)) { skipped++; continue; }
 
@@ -409,17 +455,49 @@ async function importEbay(
     const invoiceId = uuidv4();
     const paymentId = uuidv4();
 
-    // Build parts from line items (inventory-style)
-    const parts: { id: string; name: string; quantity: number; unitCostCents: number; unitPriceCents: number; source: 'inventory' | 'customer-provided' }[] = items
-      .filter(item => item.itemTitle && item.itemTitle !== '--')
-      .map(item => ({
-        id: uuidv4(),
-        name: item.itemTitle,
-        quantity: parseInt(item.quantity) || 1,
-        unitCostCents: 0, // cost unknown from eBay CSV
-        unitPriceCents: Math.round(parseDollars(item.itemSubtotal) * 100),
-        source: 'inventory' as const,
-      }));
+    // Build parts from line items — expand known products into component parts
+    const parts: { id: string; name: string; quantity: number; unitCostCents: number; unitPriceCents: number; source: 'inventory' | 'customer-provided'; inventoryItemId?: string }[] = [];
+
+    for (const item of items) {
+      if (!item.itemTitle || item.itemTitle === '--') continue;
+      const qty = parseInt(item.quantity) || 1;
+      const salePriceCents = Math.round(parseDollars(item.itemSubtotal) * 100);
+      const perUnitSaleCents = Math.round(salePriceCents / qty);
+
+      const mapping = findProductMapping(item.itemTitle);
+      if (mapping) {
+        // Expand into component parts — distribute sale price proportionally by cost
+        const totalComponentCost = mapping.components.reduce((s, c) => s + c.unitCostCents, 0);
+
+        for (const comp of mapping.components) {
+          const invItem = inventoryResolver.resolve(comp);
+          // Proportional share of sale price based on cost ratio
+          const pricePortion = totalComponentCost > 0
+            ? Math.round((comp.unitCostCents / totalComponentCost) * perUnitSaleCents)
+            : Math.round(perUnitSaleCents / mapping.components.length);
+
+          parts.push({
+            id: uuidv4(),
+            name: comp.name,
+            quantity: qty,
+            unitCostCents: comp.unitCostCents,
+            unitPriceCents: pricePortion,
+            source: 'inventory' as const,
+            inventoryItemId: invItem.id,
+          });
+        }
+      } else {
+        // No mapping — keep as generic inventory part (cost unknown)
+        parts.push({
+          id: uuidv4(),
+          name: item.itemTitle,
+          quantity: qty,
+          unitCostCents: 0,
+          unitPriceCents: Math.round(parseDollars(item.itemSubtotal) * 100),
+          source: 'inventory' as const,
+        });
+      }
+    }
 
     // Calculate totals from the row that has netAmount (the summary row)
     const summaryRow = items.find(i => i.netAmount && i.netAmount !== '--') || first;
@@ -546,9 +624,9 @@ async function importEbay(
 
   // Shipping labels are pass-through (customer-paid) — not recorded as expenses
 
-  // Persist
-  const allAuditLogs = [...resolver.auditLogs, ...auditLogs];
-  await persistAll(db, resolver.newCustomers, newJobs, newInvoices, newPayments, newExpenses, allAuditLogs, invoiceNum);
+  // Persist (including any new inventory items)
+  const allAuditLogs = [...resolver.auditLogs, ...inventoryResolver.auditLogs, ...auditLogs];
+  await persistAll(db, resolver.newCustomers, newJobs, newInvoices, newPayments, newExpenses, allAuditLogs, invoiceNum, inventoryResolver.newItems);
 
   return {
     result: {
@@ -572,6 +650,7 @@ async function persistAll(
   customers: Customer[], jobs: Job[], invoices: Invoice[],
   payments: Payment[], expenses: Expense[], auditLogs: AuditLog[],
   nextInvoiceNumber: number,
+  inventoryItems?: InventoryItem[],
 ) {
   for (const c of customers) await db.put('customers', c);
   for (const j of jobs) await db.put('jobs', j);
@@ -579,9 +658,60 @@ async function persistAll(
   for (const p of payments) await db.put('payments', p);
   for (const e of expenses) await db.put('expenses', e);
   for (const a of auditLogs) await db.put('auditLog', a);
+  if (inventoryItems) {
+    for (const item of inventoryItems) await db.put('inventoryItems', item);
+  }
 
   const currentSettings = await db.get('settings', 'default');
   if (currentSettings) {
     await db.put('settings', { ...currentSettings, nextInvoiceNumber });
+  }
+}
+
+// ─── Inventory Resolution Helper ────────────────────────────────────
+// Finds or creates inventory items by name, avoiding duplicates.
+
+function findProductMapping(itemTitle: string): ProductMapping | undefined {
+  const lower = itemTitle.toLowerCase();
+  return PRODUCT_COMPONENTS.find(pm => pm.keywords.some(kw => lower.includes(kw)));
+}
+
+class InventoryResolver {
+  private byName = new Map<string, InventoryItem>();
+  newItems: InventoryItem[] = [];
+  auditLogs: AuditLog[] = [];
+
+  constructor(existing: InventoryItem[], private now: string) {
+    for (const item of existing) {
+      this.byName.set(item.name.toLowerCase(), item);
+    }
+  }
+
+  resolve(comp: ComponentDef): InventoryItem {
+    const key = comp.name.toLowerCase();
+    const existing = this.byName.get(key);
+    if (existing) return existing;
+
+    const item: InventoryItem = {
+      id: uuidv4(),
+      name: comp.name,
+      unitCostCents: comp.unitCostCents,
+      unitPriceCents: comp.unitCostCents, // sell price = cost (actual sell price comes from eBay sale)
+      quantity: 0, // will be managed by stock adjustments
+      category: comp.category,
+      createdAt: this.now,
+      updatedAt: this.now,
+    };
+    this.byName.set(key, item);
+    this.newItems.push(item);
+    this.auditLogs.push({
+      id: uuidv4(),
+      entityType: 'inventory',
+      entityId: item.id,
+      action: 'created',
+      details: `Inventory item "${comp.name}" auto-created via eBay import (cost: $${(comp.unitCostCents / 100).toFixed(2)})`,
+      timestamp: this.now,
+    });
+    return item;
   }
 }
