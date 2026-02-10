@@ -410,7 +410,7 @@ async function importEbay(
     const paymentId = uuidv4();
 
     // Build parts from line items (inventory-style)
-    const parts = items
+    const parts: { id: string; name: string; quantity: number; unitCostCents: number; unitPriceCents: number; source: 'inventory' | 'customer-provided' }[] = items
       .filter(item => item.itemTitle && item.itemTitle !== '--')
       .map(item => ({
         id: uuidv4(),
@@ -427,6 +427,18 @@ async function importEbay(
     const itemSubtotalCents = parts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
     const shippingCents = Math.round(parseDollars(summaryRow.shipping) * 100);
 
+    // Add shipping as a customer-provided pass-through part (buyer pays, not our income/expense)
+    if (shippingCents > 0) {
+      parts.push({
+        id: uuidv4(),
+        name: 'Shipping & handling',
+        quantity: 1,
+        unitCostCents: shippingCents,
+        unitPriceCents: shippingCents,
+        source: 'customer-provided' as const,
+      });
+    }
+
     // eBay fees (from the order row itself - FVF fees)
     const fvfFixed = Math.abs(Math.round(parseDollars(summaryRow.fvfFixed) * 100));
     const fvfVariable = Math.abs(Math.round(parseDollars(summaryRow.fvfVariable) * 100));
@@ -442,21 +454,25 @@ async function importEbay(
       workPerformed: 'eBay sale',
       laborHours: 0, laborRateCents: settings.defaultLaborRateCents,
       parts,
-      miscFeesCents: shippingCents,
-      miscFeesDescription: shippingCents > 0 ? 'Shipping & handling' : '',
+      miscFeesCents: 0,
+      miscFeesDescription: '',
       taxRate: 0, status: 'paid',
       technicianNotes: `eBay Order: ${orderNumber}`,
       createdAt: now, updatedAt: now, invoiceId,
     };
 
-    const partsTotalCents = parts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
+    const inventoryParts = parts.filter(p => p.source === 'inventory');
+    const passThroughParts = parts.filter(p => p.source === 'customer-provided');
+    const partsTotalCents = inventoryParts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
+    const passThroughPartsCents = passThroughParts.reduce((s, p) => s + p.quantity * p.unitPriceCents, 0);
+
     const invoice: Invoice = {
       id: invoiceId, invoiceNumber, jobId, customerId: customer.id,
       invoiceDate: dateISO, dueDate: dateISO,
-      laborTotalCents: 0, partsTotalCents, passThroughPartsCents: 0,
-      miscFeesCents: shippingCents, subtotalCents: partsTotalCents + shippingCents,
+      laborTotalCents: 0, partsTotalCents, passThroughPartsCents,
+      miscFeesCents: 0, subtotalCents: partsTotalCents + passThroughPartsCents,
       taxCents: 0, totalCents,
-      incomeAmountCents: partsTotalCents + shippingCents,
+      incomeAmountCents: partsTotalCents, // Only inventory parts count as income
       paidAmountCents: totalCents, paymentStatus: 'paid',
       paymentMethod: 'eBay', paymentDate: dateISO,
       payments: [], createdAt: now, updatedAt: now,
@@ -528,32 +544,7 @@ async function importEbay(
     });
   }
 
-  // Process "Shipping label" costs as expenses
-  const shippingRows = rows.filter(r => r.type === 'Shipping label' && parseDollars(r.grossAmount) < 0);
-  for (const row of shippingRows) {
-    const trackingInfo = row.description || row.transactionId || '';
-    const feeKey = `SHIP-${row.orderNumber}-${trackingInfo.substring(0, 30)}`;
-    if (existingFeeIds.has(feeKey)) continue;
-
-    const feeCents = Math.abs(Math.round(parseDollars(row.grossAmount) * 100));
-    if (feeCents === 0) continue;
-
-    const dateISO = parseEbayDate(row.date);
-    const expId = uuidv4();
-
-    newExpenses.push({
-      id: expId, date: dateISO, vendor: 'eBay',
-      category: 'misc', description: `Shipping label - ${trackingInfo}`,
-      amountCents: feeCents,
-      notes: `eBay Fee: ${feeKey}`,
-      createdAt: now, updatedAt: now,
-    });
-    auditLogs.push({
-      id: uuidv4(), entityType: 'expense' as any, entityId: expId, action: 'created',
-      details: `eBay shipping label $${(feeCents / 100).toFixed(2)} - Order: ${row.orderNumber}`,
-      timestamp: now,
-    });
-  }
+  // Shipping labels are pass-through (customer-paid) — not recorded as expenses
 
   // Persist
   const allAuditLogs = [...resolver.auditLogs, ...auditLogs];
